@@ -1076,6 +1076,56 @@ async function geocodeQuery(q){
 const MAX_GEOCODE = 600;      // hard cap per search, to keep this responsive & polite to the free API
 const CONCURRENCY = 5;
 
+// Highway/route addresses (e.g. "13900 US 290") are a known weak spot for
+// geocoders: the road network often indexes them under a fuller name
+// ("US Highway 290") than however the source data happened to abbreviate
+// it. This generates a few alternate phrasings to try, only used as a
+// last resort after the normal chain has already failed.
+function highwayVariants(street){
+  const s = (street || '').trim();
+  const variants = [];
+  const add = (num, phrase, rest) => variants.push(`${num} ${phrase}${rest ? ' ' + rest : ''}`);
+
+  let m = s.match(/^(\d+)\s+US\s*-?\s*(?:HWY|HIGHWAY)?\s*(\d+)\s*(.*)$/i);
+  if(m){
+    add(m[1], `US Highway ${m[2]}`, m[3]);
+    add(m[1], `US Hwy ${m[2]}`, m[3]);
+    add(m[1], `US Route ${m[2]}`, m[3]);
+  }
+  m = s.match(/^(\d+)\s+(?:SH|STATE\s*HWY|STATE\s*HIGHWAY)\s*-?\s*(\d+)\s*(.*)$/i);
+  if(m){
+    add(m[1], `State Highway ${m[2]}`, m[3]);
+    add(m[1], `Highway ${m[2]}`, m[3]);
+  }
+  m = s.match(/^(\d+)\s+(?:I|IH)\s*-?\s*(\d+)\s*(.*)$/i);
+  if(m){
+    add(m[1], `Interstate ${m[2]}`, m[3]);
+  }
+  m = s.match(/^(\d+)\s+HWY\s*-?\s*(\d+)\s*(.*)$/i);
+  if(m){
+    add(m[1], `Highway ${m[2]}`, m[3]);
+  }
+  m = s.match(/^(\d+)\s+FM\s*-?\s*(\d+)\s*(.*)$/i);
+  if(m){
+    add(m[1], `Farm to Market Road ${m[2]}`, m[3]);
+    add(m[1], `FM Road ${m[2]}`, m[3]);
+  }
+  return [...new Set(variants)];
+}
+async function tryHighwayVariants(r){
+  const variants = highwayVariants(r.a);
+  if(!variants.length) return null;
+  for(const variant of variants){
+    const pt = await censusGeocodeJSONP(`${variant}, ${r.c}, ${r.s} ${r.z}`, 8000);
+    if(pt) return {pt, src: 'census-hwy'};
+  }
+  for(const variant of variants){
+    const pt = await queuedNominatim(() => nominatimGeocode(`${variant}, ${r.c}, ${r.s} ${r.z}`));
+    if(pt) return {pt, src: 'osm-hwy'};
+  }
+  return null;
+}
+
 async function geocodeRows(rows, onProgress){
   let idx = 0, completed = 0;
   const toDo = rows.filter(r => r._geo !== 'exact' && r._geo !== 'approx' && r._geo !== 'manual');
@@ -1097,6 +1147,10 @@ async function geocodeRows(rows, onProgress){
         if(!pt){
           pt = await queuedNominatim(() => nominatimGeocodeStructured(r.a, r.c, r.s, r.z));
           src = 'osm';
+        }
+        if(!pt){
+          const hw = await tryHighwayVariants(r);
+          if(hw){ pt = hw.pt; src = hw.src; }
         }
         if(pt){
           r._plat = pt.lat; r._plon = pt.lon; r._geo = 'exact'; r._geoSrc = src;
@@ -1178,7 +1232,9 @@ function assignNumbers(){
 
 function bindPropertyPopup(marker, r){
   const dist = r._dist !== undefined ? `${r._dist.toFixed(1)} mi away<br>` : '';
-  const srcLabel = r._geoSrc === 'census' ? ' (Census)' : r._geoSrc === 'census-alt' ? ' (Census, alt parser)' : r._geoSrc === 'osm' ? ' (OpenStreetMap)' : '';
+  const srcLabel = r._geoSrc === 'census' ? ' (Census)' : r._geoSrc === 'census-alt' ? ' (Census, alt parser)'
+    : r._geoSrc === 'osm' ? ' (OpenStreetMap)' : r._geoSrc === 'census-hwy' ? ' (Census, highway variant)'
+    : r._geoSrc === 'osm-hwy' ? ' (OpenStreetMap, highway variant)' : '';
   const geoLabel = r._geo === 'exact' ? 'exact street address' + srcLabel
                   : r._geo === 'manual' ? 'manually corrected location'
                   : r._geo === 'pending' ? 'locating…'
