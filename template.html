@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FHA Multifamily Property Finder</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+  :root{
+    --ink:#1b2430;
+    --ink-soft:#4a5568;
+    --paper:#f6f5f1;
+    --panel:#ffffff;
+    --line:#dfdcd3;
+    --accent:#0d5c46;
+    --accent-soft:#e4efe9;
+    --brick:#a4462e;
+    --mono: "IBM Plex Mono", "Courier New", monospace;
+    --sans: "IBM Plex Sans", Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;font-family:var(--sans);color:var(--ink);background:var(--paper);}
+  #app{display:flex;flex-direction:column;height:100vh;}
+
+  header{
+    background:var(--ink);
+    color:#f6f5f1;
+    padding:14px 22px;
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    border-bottom:3px solid var(--brick);
+    flex-shrink:0;
+  }
+  header h1{
+    font-size:17px;
+    font-weight:700;
+    letter-spacing:0.02em;
+    margin:0;
+    text-transform:uppercase;
+  }
+  header .sub{
+    font-family:var(--mono);
+    font-size:11px;
+    color:#b9c2c4;
+    letter-spacing:0.03em;
+  }
+
+  #main{flex:1;display:flex;min-height:0;}
+
+  #sidebar{
+    width:340px;
+    flex-shrink:0;
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    padding:18px;
+    overflow-y:auto;
+  }
+  #sidebar h2{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--ink-soft);
+    margin:0 0 10px 0;
+    padding-bottom:6px;
+    border-bottom:1px solid var(--line);
+  }
+  .field{margin-bottom:14px;}
+  .field label{
+    display:block;
+    font-size:12px;
+    font-weight:600;
+    margin-bottom:5px;
+    color:var(--ink);
+  }
+  .field input[type=text], .field input[type=number], .field select{
+    width:100%;
+    padding:8px 9px;
+    border:1px solid var(--line);
+    border-radius:3px;
+    font-size:13px;
+    font-family:var(--sans);
+    background:#fff;
+  }
+  .field input:focus, .field select:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .row2{display:flex; gap:10px;}
+  .row2 > div{flex:1;}
+
+  button{font-family:var(--sans); cursor:pointer;}
+  #searchBtn{
+    width:100%;
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    padding:10px;
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:0.03em;
+    border-radius:3px;
+    text-transform:uppercase;
+    margin-top:4px;
+  }
+  #searchBtn:hover{background:#0a4736;}
+  #searchBtn:disabled{background:#9aa; cursor:default;}
+
+  .secondaryBtn{
+    width:100%;
+    background:#fff;
+    border:1px solid var(--accent);
+    color:var(--accent);
+    padding:9px;
+    font-size:12.5px;
+    font-weight:700;
+    border-radius:3px;
+    text-transform:uppercase;
+    letter-spacing:0.02em;
+  }
+  .secondaryBtn:hover{background:var(--accent); color:#fff;}
+  .secondaryBtn:disabled{opacity:0.4; cursor:default;}
+
+  #clearBtn{
+    width:100%;
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+    padding:7px;
+    font-size:12px;
+    border-radius:3px;
+    margin-top:6px;
+  }
+  #clearBtn:hover{border-color:var(--ink-soft); color:var(--ink);}
+
+  #status{
+    font-family:var(--mono);
+    font-size:11.5px;
+    color:var(--ink-soft);
+    margin-top:10px;
+    min-height:16px;
+    line-height:1.5;
+    white-space:pre-wrap;
+  }
+  #status.err{color:var(--brick);}
+
+  .divider{height:1px;background:var(--line);margin:16px 0;}
+
+  #content{flex:1; display:flex; flex-direction:column; min-width:0; position:relative;}
+  #map{flex:1 1 55%; min-height:200px;}
+  #mapExpandBtn{
+    position:absolute;
+    top:12px; right:12px;
+    z-index:1200;
+    background:#fff;
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:7px 12px;
+    font-size:12px;
+    font-weight:600;
+    font-family:var(--sans);
+    border-radius:4px;
+    cursor:pointer;
+    box-shadow:0 2px 8px rgba(0,0,0,0.18);
+  }
+  #mapExpandBtn:hover{background:var(--accent-soft); border-color:var(--accent); color:var(--accent);}
+  #resultsWrap{
+    flex:1 1 45%;
+    border-top:2px solid var(--ink);
+    overflow-y:auto;
+    background:var(--panel);
+  }
+  #resultsHeader{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:10px 18px;
+    border-bottom:1px solid var(--line);
+    background:var(--accent-soft);
+    position:sticky;
+    top:0;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  #resultsHeader h2{
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    margin:0;
+    color:var(--accent);
+  }
+  #headerBtns{display:flex; gap:8px;}
+  #headerBtns button{
+    background:#fff;
+    border:1px solid var(--accent);
+    color:var(--accent);
+    padding:5px 12px;
+    font-size:11.5px;
+    font-weight:600;
+    border-radius:3px;
+    text-transform:uppercase;
+    letter-spacing:0.02em;
+  }
+  #headerBtns button:hover{background:var(--accent); color:#fff;}
+  #headerBtns button:disabled{opacity:0.4; cursor:default;}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  thead th{
+    text-align:left;
+    padding:8px 12px;
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    color:var(--ink-soft);
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+    position:sticky;
+    top:37px;
+    background:var(--panel);
+    cursor:pointer;
+  }
+  thead th:hover{color:var(--ink);}
+  tbody td{
+    padding:8px 12px;
+    border-bottom:1px solid #eeece5;
+    vertical-align:top;
+  }
+  tbody tr:hover{background:var(--accent-soft); cursor:pointer;}
+  .num{text-align:right; font-family:var(--mono); white-space:nowrap;}
+  .badge{
+    display:inline-block;
+    font-family:var(--mono);
+    font-size:10px;
+    padding:1px 5px;
+    border-radius:3px;
+  }
+  .badge-exact{background:var(--accent-soft); color:var(--accent);}
+  .badge-approx{background:#f3e4d6; color:var(--brick);}
+  .badge-manual{background:#dce8f5; color:#2a5d8f;}
+  .badge-pending{background:#eee; color:#888;}
+  .empty-state{
+    padding:40px 20px;
+    text-align:center;
+    color:var(--ink-soft);
+    font-size:13px;
+    line-height:1.6;
+  }
+  .empty-state strong{color:var(--ink); display:block; margin-bottom:6px; font-size:14px;}
+
+  .leaflet-popup-content{font-family:var(--sans); font-size:12.5px; line-height:1.5;}
+  .popup-title{font-weight:700; margin-bottom:3px;}
+  .popup-meta{color:var(--ink-soft); font-size:11.5px;}
+
+  .num-pin{
+    width:26px; height:26px;
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    color:#fff;
+    font-family:var(--sans);
+    font-weight:700;
+    font-size:11px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.45);
+    border:2px solid #fff;
+  }
+  .num-pin-exact{background:var(--accent);}
+  .num-pin-approx{background:var(--brick);}
+  .num-pin-manual{background:#2a5d8f;}
+
+
+  ::-webkit-scrollbar{width:10px;}
+  ::-webkit-scrollbar-thumb{background:#c9c5b8; border-radius:5px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  .dropdown{position:relative; margin-bottom:4px;}
+  .dropdown-btn{
+    width:100%;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 9px;
+    border:1px solid var(--line);
+    border-radius:3px;
+    background:#fff;
+    font-size:13px;
+    font-family:var(--sans);
+    color:var(--ink);
+    cursor:pointer;
+    text-align:left;
+  }
+  .dropdown-btn:hover{border-color:var(--accent);}
+  .dropdown-caret{color:var(--ink-soft); font-size:11px; margin-left:8px;}
+  .dropdown-panel{
+    display:none;
+    position:absolute;
+    top:calc(100% + 4px);
+    left:0; right:0;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:8px 10px;
+    z-index:1000;
+    box-shadow:0 4px 14px rgba(0,0,0,0.12);
+    max-height:230px;
+    overflow-y:auto;
+  }
+  .dropdown-panel.open{display:block;}
+  .dropdown-panel label{
+    display:flex; align-items:center; gap:7px;
+    padding:5px 0;
+    font-size:12.5px;
+    cursor:pointer;
+    line-height:1.3;
+  }
+  .dropdown-panel input{width:auto; flex-shrink:0;}
+
+  .star-pin{
+    width:30px; height:30px;
+    border-radius:50%;
+    background:#fff;
+    border:3px solid #c0392b;
+    display:flex; align-items:center; justify-content:center;
+    font-size:15px;
+    color:#c0392b;
+    box-shadow:0 1px 5px rgba(0,0,0,0.45);
+  }
+  .subject-pin{
+    width:30px; height:30px;
+    border-radius:50%;
+    background:#fff;
+    border:3px solid #c9962b;
+    display:flex; align-items:center; justify-content:center;
+    font-size:15px;
+    color:#c9962b;
+    box-shadow:0 1px 5px rgba(0,0,0,0.45);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>FHA Multifamily Property Finder</h1>
+    <span class="sub">HUD Active Insured Multifamily Mortgages · <span id="recCount">—</span> confirmed active projects</span>
+  </header>
+
+  <div id="main">
+    <div id="sidebar">
+      <h2>Subject Property</h2>
+      <div class="field">
+        <label for="subjectInput">Address</label>
+        <input type="text" id="subjectInput" placeholder="e.g. 123 Main St, Dallas, TX 75201">
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button id="setSubjectBtn" type="button" class="secondaryBtn" style="flex:1;">★ Set subject property</button>
+        <button id="clearSubjectBtn" type="button" style="display:none;flex:0 0 auto;background:#fff;border:1px solid var(--line);color:var(--ink-soft);padding:9px 12px;font-size:12px;border-radius:3px;">Clear</button>
+      </div>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Marks a fixed reference point (e.g. your subject property) with a gold star. Stays on the map across searches until you clear it — separate from the red star used for address+radius search.</p>
+
+      <div class="divider"></div>
+
+      <h2>Search by address + radius</h2>
+      <div class="field">
+        <label for="addrInput">Address, city, or zip code</label>
+        <input type="text" id="addrInput" placeholder="e.g. 123 Main St, Dallas, TX or 75201">
+      </div>
+      <div class="field">
+        <label for="radiusInput">Radius (miles)</label>
+        <input type="number" id="radiusInput" value="10" min="0.5" max="500" step="0.5">
+      </div>
+      <button id="searchBtn">Search</button>
+      <div id="status"></div>
+      <button id="cancelFixBtn" type="button" style="display:none;margin-top:6px;width:100%;background:#fff;border:1px solid var(--brick);color:var(--brick);padding:6px;font-size:11.5px;border-radius:3px;">Cancel fix</button>
+
+      <div class="divider"></div>
+
+      <h2>Or filter directly</h2>
+      <div class="row2">
+        <div class="field">
+          <label for="stateFilter">State</label>
+          <select id="stateFilter"><option value="">All states</option></select>
+        </div>
+        <div class="field">
+          <label for="zipFilter">Zip code</label>
+          <input type="text" id="zipFilter" placeholder="e.g. 75201">
+        </div>
+      </div>
+      <div class="field">
+        <label for="cityFilter">City</label>
+        <input type="text" id="cityFilter" placeholder="e.g. Dallas">
+      </div>
+      <button id="filterBtn" class="secondaryBtn">Apply filters</button>
+      <button id="clearBtn">Clear all / show none</button>
+
+      <div class="divider"></div>
+
+      <h2>Or draw an area on the map</h2>
+      <button id="drawAreaBtn" type="button" class="secondaryBtn">✏️ Draw area on map</button>
+      <div id="drawControls" style="display:none; margin-top:8px;">
+        <p style="font-size:11px;color:var(--ink-soft);margin-bottom:6px;">Click points on the map to outline an area (3+ points). Double-click, or hit "Finish", when done.</p>
+        <div style="display:flex; gap:8px;">
+          <button id="finishDrawBtn" type="button" disabled style="flex:1;background:var(--accent);color:#fff;border:none;padding:8px;font-size:12px;font-weight:700;border-radius:3px;text-transform:uppercase;">Finish</button>
+          <button id="cancelDrawBtn" type="button" style="flex:1;background:#fff;border:1px solid var(--line);color:var(--ink-soft);padding:8px;font-size:12px;border-radius:3px;">Cancel</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <h2>Property type</h2>
+      <div class="dropdown" id="btDropdown">
+        <button type="button" class="dropdown-btn" id="btDropdownBtn">
+          <span id="btDropdownLabel">Residential apartments</span><span class="dropdown-caret">▾</span>
+        </button>
+        <div class="dropdown-panel" id="btDropdownPanel">
+          <label><input type="checkbox" id="btResidential" checked> Residential apartments</label>
+          <label><input type="checkbox" id="btHospitals"> Hospitals</label>
+          <label><input type="checkbox" id="btHealthcare"> Healthcare (nursing homes / assisted living / board+care)</label>
+        </div>
+      </div>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Residential only by default. Applies to both the address search and the direct filters above.</p>
+
+      <div class="divider"></div>
+
+      <h2>Financing type</h2>
+      <div class="dropdown" id="finDropdown">
+        <button type="button" class="dropdown-btn" id="finDropdownBtn">
+          <span id="finDropdownLabel">All financing types</span><span class="dropdown-caret">▾</span>
+        </button>
+        <div class="dropdown-panel" id="finDropdownPanel">
+          <label><input type="checkbox" class="finCheck" value="221d4" checked> 221(d)(4)</label>
+          <label><input type="checkbox" class="finCheck" value="223f" checked> 223(f)</label>
+          <label><input type="checkbox" class="finCheck" value="223a7_221d4" checked> 223(a)(7) refi of 221(d)(4)</label>
+          <label><input type="checkbox" class="finCheck" value="223a7_223f" checked> 223(a)(7) refi of 223(f)</label>
+          <label><input type="checkbox" class="finCheck" value="risk_share" checked> Risk sharing (542(b)/542(c))</label>
+          <label><input type="checkbox" class="finCheck" value="other" checked> Other residential</label>
+        </div>
+      </div>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">All checked by default. Only affects Residential properties — Healthcare/Hospitals are controlled by Property type above.</p>
+
+      <div class="divider"></div>
+
+      <h2>Map display</h2>
+      <div class="field" style="margin-bottom:4px;">
+        <label style="display:flex;align-items:center;gap:7px;font-weight:500;cursor:pointer;">
+          <input type="checkbox" id="separateToggle" checked style="width:auto;"> Separate overlapping pins
+        </label>
+      </div>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">When on, pins that sit exactly on top of each other nudge apart with a line back to the real spot. Turn off for large result sets (e.g. a whole state) where that looks cluttered — pins will simply overlap instead.</p>
+
+      <div class="divider"></div>
+
+      <h2>Location corrections</h2>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-bottom:8px;">Click "📍 Fix this location" in any pin's popup, then click the map where the property actually is. Corrections only last for this browser session unless you export them.</p>
+      <div style="display:flex; gap:8px;">
+        <button id="exportOverridesBtn" type="button" style="flex:1;font-size:11px;padding:6px;border:1px solid var(--line);background:#fff;border-radius:3px;color:var(--ink-soft);">Export corrections</button>
+        <button id="importOverridesBtn" type="button" style="flex:1;font-size:11px;padding:6px;border:1px solid var(--line);background:#fff;border-radius:3px;color:var(--ink-soft);">Import corrections</button>
+        <input type="file" id="importOverridesInput" accept="application/json" style="display:none;">
+      </div>
+
+      <div class="divider"></div>
+      <p style="font-size:11px;color:var(--ink-soft);line-height:1.6;">
+        Data: HUD Insured Multifamily Mortgages (active) cross-referenced with HUD's Insured Active Multifamily FHA Property Addresses file by FHA project number.<br><br>
+        <span class="badge badge-exact">exact</span> = geocoded to the real street address, on demand, only for properties in your current results. Tries the U.S. Census geocoder first (two different parsers), then OpenStreetMap as a last resort — different address databases catch different addresses.<br>
+        <span class="badge badge-approx">approx</span> = none of those could match the address; falling back to the ZIP code centroid.<br>
+        <span class="badge badge-manual">manual</span> = you corrected this pin by hand.<br><br>
+        ★ = the address/location you searched for. A dashed gold circle shows the search radius; a dashed green outline shows the exact city/state/zip boundary when using the direct filters (via U.S. Census TIGERweb — may not draw if that service is briefly unavailable).<br><br>
+        Every pin always shows its own property number. If two properties sit right on top of each other on screen (e.g. sharing a zip centroid), they're nudged apart slightly with a thin line back to the true spot. Click any table row to jump the map straight to that property and open its details.
+      </p>
+    </div>
+
+    <div id="content">
+      <button id="mapExpandBtn" type="button">⤢ Expand map</button>
+      <div id="map"></div>
+      <div id="resultsWrap">
+        <div id="resultsHeader">
+          <h2 id="resultsTitle">No search yet</h2>
+          <div id="headerBtns">
+            <button id="geocodeBtn" disabled>Locate street addresses</button>
+            <button id="exportBtn" disabled>Export CSV</button>
+          </div>
+        </div>
+        <div id="resultsBody">
+          <div class="empty-state">
+            <strong>Enter an address and radius, or use the filters, to begin.</strong>
+            Results will appear on the map and in a table here.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="propData">
+__DATA_PLACEHOLDER__
+</script>
+
+<script>
+/* ============================================================
+   DATA
+   ============================================================ */
+const PROPS = JSON.parse(document.getElementById('propData').textContent);
+document.getElementById('recCount').textContent = PROPS.length.toLocaleString();
+
+// give every record a stable key + mutable geocode status, without touching source data
+for (const p of PROPS) {
+  p._key = p.f + '|' + p.a;   // fha number + address is unique enough
+  p._geo = 'none';            // 'none' | 'pending' | 'exact' | 'approx'
+}
+const geocodeCache = new Map(); // _key -> {lat, lon, status}
+
+/* ============================================================
+   RESILIENT LEAFLET LOADING
+   If the primary CDN <script> tag in <head> fails (network hiccup,
+   corporate firewall, ad-blocker), `L` never gets defined and the very
+   next line below would throw — silently breaking every button on the
+   page, not just the map. Guard against that with fallback CDNs and a
+   visible error instead of a dead page.
+   ============================================================ */
+function loadScriptTag(src){
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+async function ensureLeaflet(){
+  if(typeof L !== 'undefined') return true;
+  const fallbacks = [
+    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+    'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js'
+  ];
+  for(const url of fallbacks){
+    try{ await loadScriptTag(url); if(typeof L !== 'undefined') return true; } catch(e){ /* try next */ }
+  }
+  return typeof L !== 'undefined';
+}
+
+(async function initApp(){
+  const ok = await ensureLeaflet();
+  if(!ok){
+    document.getElementById('map').innerHTML =
+      '<div style="padding:24px;font-family:sans-serif;color:#4a5568;">' +
+      '<strong style="color:#1b2430;">The map library failed to load.</strong><br><br>' +
+      'This tool needs to load Leaflet from a CDN, and none of the usual sources ' +
+      '(cdnjs, unpkg, jsDelivr) were reachable. This is almost always a network issue — ' +
+      'a corporate firewall, ad-blocker, or offline connection blocking those domains — ' +
+      'not a problem with the data or your search.<br><br>' +
+      'Try: reloading the page, switching networks (e.g. off a restrictive VPN or corporate wifi), ' +
+      'or disabling any ad-blocker/privacy extension for this page, then reload.' +
+      '</div>';
+    document.getElementById('resultsBody').innerHTML =
+      '<div class="empty-state"><strong>Search is unavailable right now.</strong>' +
+      'The map library could not load — see the message above the map for why.</div>';
+    return;
+  }
+
+/* ============================================================
+   MAP
+   ============================================================ */
+const map = L.map('map', {
+  scrollWheelZoom: true,
+  zoomSnap: 0.25,          // allow quarter-level zoom steps instead of only whole numbers
+  zoomDelta: 0.5,           // +/- buttons and keyboard zoom by half a level at a time
+  wheelPxPerZoomLevel: 120  // require more scroll distance per zoom level = smaller, smoother jumps
+}).setView([39.5, -98.35], 4);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors',
+  maxZoom: 18
+}).addTo(map);
+
+let mapExpanded = false;
+document.getElementById('mapExpandBtn').addEventListener('click', () => {
+  mapExpanded = !mapExpanded;
+  const resultsWrap = document.getElementById('resultsWrap');
+  const mapDiv = document.getElementById('map');
+  const btn = document.getElementById('mapExpandBtn');
+  if(mapExpanded){
+    resultsWrap.style.display = 'none';
+    mapDiv.style.flex = '1 1 100%';
+    btn.textContent = '⤡ Show list';
+  } else {
+    resultsWrap.style.display = '';
+    mapDiv.style.flex = '1 1 55%';
+    btn.textContent = '⤢ Expand map';
+  }
+  // Leaflet caches its container size; after the layout changes, tell it
+  // to recheck, once the browser has actually applied the new layout.
+  requestAnimationFrame(() => requestAnimationFrame(() => map.invalidateSize()));
+});
+
+/* ============================================================
+   DRAW AN AREA ON THE MAP
+   ============================================================ */
+let drawMode = false;
+let drawnLatLngs = [];
+let drawPreviewLayer = null; // temporary line while actively drawing
+let drawnAreaLayer = null;   // finalized shape shown after finishing
+
+function clearDrawnArea(){
+  if(drawnAreaLayer){ map.removeLayer(drawnAreaLayer); drawnAreaLayer = null; }
+}
+
+function updateDrawPreview(){
+  if(drawPreviewLayer){ map.removeLayer(drawPreviewLayer); drawPreviewLayer = null; }
+  if(drawnLatLngs.length < 2) return;
+  drawPreviewLayer = L.polyline(drawnLatLngs, {color:'#0d5c46', weight:2, dashArray:'4,4'}).addTo(map);
+}
+
+function startDrawing(){
+  clearDrawnArea();
+  drawMode = true;
+  drawnLatLngs = [];
+  updateDrawPreview();
+  document.getElementById('drawControls').style.display = 'block';
+  document.getElementById('finishDrawBtn').disabled = true;
+  map.getContainer().style.cursor = 'crosshair';
+  setStatus('Click points on the map to outline an area (need at least 3).');
+}
+
+function stopDrawing(){
+  drawMode = false;
+  map.getContainer().style.cursor = '';
+  document.getElementById('drawControls').style.display = 'none';
+  if(drawPreviewLayer){ map.removeLayer(drawPreviewLayer); drawPreviewLayer = null; }
+  drawnLatLngs = [];
+}
+
+// Standard ray-casting point-in-polygon test.
+function pointInPolygon(pt, polygon){ // pt: [lat,lon]; polygon: L.LatLng[]
+  let inside = false;
+  const x = pt[1], y = pt[0];
+  for(let i = 0, j = polygon.length - 1; i < polygon.length; j = i++){
+    const xi = polygon[i].lng, yi = polygon[i].lat;
+    const xj = polygon[j].lng, yj = polygon[j].lat;
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if(intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function finishDrawing(){
+  if(drawnLatLngs.length < 3) return;
+  const polygonPoints = drawnLatLngs.slice();
+  stopDrawing();
+
+  drawnAreaLayer = L.polygon(polygonPoints, {
+    color: '#0d5c46', weight: 2.5, fillColor: '#0d5c46', fillOpacity: 0.08
+  }).addTo(map);
+
+  const types = activeBusinessTypes();
+  const finGroups = activeFinancingGroups();
+  if(types.size === 0){ setStatus('Check at least one property type.', true); return; }
+  if(finGroups.size === 0){ setStatus('Check at least one financing type.', true); return; }
+
+  const results = PROPS.filter(p => {
+    if(p.la == null || p.lo == null) return false;
+    if(!passesTypeFilter(p, types)) return false;
+    if(!passesFinancingFilter(p, finGroups)) return false;
+    return pointInPolygon([p.la, p.lo], polygonPoints);
+  });
+
+  currentResults = results.map(r => applyOverride({...r}));
+  searchContext = {isRadius: false, isDrawn: true, polygon: polygonPoints};
+  radiusLayer.clearLayers();
+  boundaryLayer.clearLayers();
+
+  renderAll(`${results.length.toLocaleString()} properties inside the drawn area`);
+  if(results.length > MAX_GEOCODE){
+    setStatus(`Found ${results.length.toLocaleString()} properties (zip-level pins shown). That's a lot to street-geocode at once — narrow your area, or click "Locate street addresses" to geocode the first ${MAX_GEOCODE}.`);
+  } else {
+    setStatus(`Found ${results.length.toLocaleString()} properties (zip-level pins shown). Click "Locate street addresses" for exact pins.`);
+  }
+}
+
+// Recomputes polygon membership using exact geocoded coordinates once
+// available, dropping anything whose true location actually falls
+// outside the drawn shape (the initial pass only knows zip centroids).
+function recomputePolygonMembershipIfDrawn(){
+  if(!searchContext || !searchContext.isDrawn) return;
+  currentResults = currentResults.filter(r => {
+    const pt = pointFor(r);
+    if(!pt) return true;
+    return pointInPolygon(pt, searchContext.polygon);
+  });
+}
+
+map.on('click', (e) => {
+  if(!drawMode) return;
+  drawnLatLngs.push(e.latlng);
+  updateDrawPreview();
+  document.getElementById('finishDrawBtn').disabled = drawnLatLngs.length < 3;
+});
+map.on('dblclick', (e) => {
+  if(!drawMode) return;
+  if(drawnLatLngs.length >= 3){
+    e.originalEvent && e.originalEvent.preventDefault();
+    finishDrawing();
+  }
+});
+document.getElementById('drawAreaBtn').addEventListener('click', startDrawing);
+document.getElementById('finishDrawBtn').addEventListener('click', finishDrawing);
+document.getElementById('cancelDrawBtn').addEventListener('click', () => {
+  stopDrawing();
+  setStatus('Draw cancelled.');
+});
+
+let markerLayer = L.layerGroup().addTo(map);
+let starLayer = L.layerGroup().addTo(map);
+let radiusLayer = L.layerGroup().addTo(map);
+let boundaryLayer = L.layerGroup().addTo(map);
+let subjectLayer = L.layerGroup().addTo(map); // Subject Property — persists across searches, only cleared explicitly
+
+const exactIcon = L.icon({
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconSize:[25,41], iconAnchor:[12,41], popupAnchor:[1,-34], shadowSize:[41,41]
+});
+const approxIcon = L.icon({
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x-grey.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconSize:[25,41], iconAnchor:[12,41], popupAnchor:[1,-34], shadowSize:[41,41]
+});
+function numberedIcon(num, status){
+  const cls = status === 'exact' ? 'num-pin-exact' : status === 'manual' ? 'num-pin-manual' : 'num-pin-approx';
+  return L.divIcon({
+    className: '',
+    html: `<div class="num-pin ${cls}">${num}</div>`,
+    iconSize:[26,26],
+    iconAnchor:[13,13],
+    popupAnchor:[0,-13]
+  });
+}
+function starIcon(){
+  return L.divIcon({
+    className: '',
+    html: `<div class="star-pin">★</div>`,
+    iconSize:[30,30],
+    iconAnchor:[15,15],
+    popupAnchor:[0,-15]
+  });
+}
+function subjectIcon(){
+  return L.divIcon({
+    className: '',
+    html: `<div class="subject-pin">★</div>`,
+    iconSize:[30,30],
+    iconAnchor:[15,15],
+    popupAnchor:[0,-15]
+  });
+}
+let searchMarker = null;
+const manualOverrides = new Map(); // fha_number -> {lat, lon}
+let placementModeFor = null;       // fha_number currently awaiting a map click
+
+/* ============================================================
+   PROPERTY TYPE FILTER
+   ============================================================ */
+function activeBusinessTypes(){
+  const set = new Set();
+  if(document.getElementById('btResidential').checked) set.add('R');
+  if(document.getElementById('btHospitals').checked) set.add('P');
+  if(document.getElementById('btHealthcare').checked) set.add('H');
+  return set;
+}
+function passesTypeFilter(p, types){
+  return types.has(p.bt);
+}
+
+
+/* ============================================================
+   STATE DROPDOWN
+   ============================================================ */
+const stateSel = document.getElementById('stateFilter');
+const states = Array.from(new Set(PROPS.map(p=>p.s))).filter(Boolean).sort();
+for(const s of states){
+  const opt = document.createElement('option');
+  opt.value = s; opt.textContent = s;
+  stateSel.appendChild(opt);
+}
+
+/* ---------- FINANCING TYPE (6-bucket) FILTER ---------- */
+function activeFinancingGroups(){
+  const set = new Set();
+  document.querySelectorAll('.finCheck').forEach(cb => { if(cb.checked) set.add(cb.value); });
+  return set;
+}
+function passesFinancingFilter(p, groups){
+  if(p.bt !== 'R') return true; // bucket scheme only applies to residential; healthcare/hospitals controlled by Property type
+  return groups.has(p.grp);
+}
+
+/* ---------- DROPDOWN UI (Property type / Financing type) ---------- */
+function setupDropdown(wrapperId, btnId, panelId, updateLabel){
+  const wrapper = document.getElementById(wrapperId);
+  const btn = document.getElementById(btnId);
+  const panel = document.getElementById(panelId);
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = !panel.classList.contains('open');
+    document.querySelectorAll('.dropdown-panel.open').forEach(p => p.classList.remove('open'));
+    if(willOpen) panel.classList.add('open');
+  });
+  panel.addEventListener('click', (e) => e.stopPropagation());
+  panel.addEventListener('change', updateLabel);
+  updateLabel();
+}
+document.addEventListener('click', () => {
+  document.querySelectorAll('.dropdown-panel.open').forEach(p => p.classList.remove('open'));
+});
+
+function updateBtLabel(){
+  const boxes = [
+    ['btResidential','Residential'],
+    ['btHospitals','Hospitals'],
+    ['btHealthcare','Healthcare']
+  ];
+  const checked = boxes.filter(([id]) => document.getElementById(id).checked).map(([,label]) => label);
+  const label = checked.length === 0 ? 'None selected'
+    : checked.length === boxes.length ? 'All property types'
+    : checked.join(', ');
+  document.getElementById('btDropdownLabel').textContent = label;
+}
+function updateFinLabel(){
+  const total = document.querySelectorAll('.finCheck').length;
+  const checkedCount = document.querySelectorAll('.finCheck:checked').length;
+  const label = checkedCount === 0 ? 'None selected'
+    : checkedCount === total ? 'All financing types'
+    : `${checkedCount} of ${total} selected`;
+  document.getElementById('finDropdownLabel').textContent = label;
+}
+setupDropdown('btDropdown','btDropdownBtn','btDropdownPanel', updateBtLabel);
+setupDropdown('finDropdown','finDropdownBtn','finDropdownPanel', updateFinLabel);
+
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+function haversineMiles(lat1, lon1, lat2, lon2){
+  const R = 3958.8;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2-lat1);
+  const dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function fmtMoney(n){
+  if(n===null || n===undefined) return '—';
+  return '$' + Number(n).toLocaleString();
+}
+function escapeHtml(s){
+  if(s===null||s===undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function setStatus(msg, isErr){
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = isErr ? 'err' : '';
+}
+
+/* ============================================================
+   CENSUS GEOCODER (JSONP — the Census API has no CORS support,
+   so a normal fetch() is silently blocked; JSONP sidesteps that
+   by loading the response as a <script> tag instead of XHR)
+   ============================================================ */
+function censusGeocodeJSONP(oneLineAddress, timeoutMs){
+  return new Promise((resolve) => {
+    const cbName = 'censusCb_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let done = false;
+    function cleanup(){
+      if(done) return;
+      done = true;
+      delete window[cbName];
+      script.remove();
+      clearTimeout(timer);
+    }
+    window[cbName] = function(data){
+      cleanup();
+      try{
+        const matches = data && data.result && data.result.addressMatches;
+        if(matches && matches.length){
+          resolve({lat: matches[0].coordinates.y, lon: matches[0].coordinates.x});
+        } else {
+          resolve(null);
+        }
+      } catch(e){ resolve(null); }
+    };
+    const timer = setTimeout(() => { cleanup(); resolve(null); }, timeoutMs || 8000);
+    const url = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress'
+      + '?address=' + encodeURIComponent(oneLineAddress)
+      + '&benchmark=Public_AR_Current&format=jsonp&callback=' + cbName;
+    script.src = url;
+    script.onerror = () => { cleanup(); resolve(null); };
+    document.head.appendChild(script);
+  });
+}
+
+// Fallback for place-style queries ("Dallas, TX") that the Census
+// oneline endpoint isn't built for. Nominatim supports CORS directly.
+async function nominatimGeocode(query){
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(query)}`;
+  const resp = await fetch(url, {headers: {'Accept':'application/json'}});
+  if(!resp.ok) throw new Error('Geocoding service error (' + resp.status + ')');
+  const data = await resp.json();
+  if(!data.length) return null;
+  return {lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon)};
+}
+
+// Census's "oneline" endpoint parses a single string and can fail to match
+// addresses that its structured parser would catch (or that just aren't in
+// its TIGER/Line reference set, which happens for some real, valid addresses).
+// This hits the structured endpoint with street/city/state/zip passed
+// separately — a different parser path that sometimes succeeds where oneline fails.
+function censusGeocodeStructuredJSONP(street, city, state, zip, timeoutMs){
+  return new Promise((resolve) => {
+    const cbName = 'censusCb2_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let done = false;
+    function cleanup(){
+      if(done) return;
+      done = true;
+      delete window[cbName];
+      script.remove();
+      clearTimeout(timer);
+    }
+    window[cbName] = function(data){
+      cleanup();
+      try{
+        const matches = data && data.result && data.result.addressMatches;
+        if(matches && matches.length){
+          resolve({lat: matches[0].coordinates.y, lon: matches[0].coordinates.x});
+        } else {
+          resolve(null);
+        }
+      } catch(e){ resolve(null); }
+    };
+    const timer = setTimeout(() => { cleanup(); resolve(null); }, timeoutMs || 8000);
+    const url = 'https://geocoding.geo.census.gov/geocoder/locations/address'
+      + '?street=' + encodeURIComponent(street)
+      + '&city=' + encodeURIComponent(city)
+      + '&state=' + encodeURIComponent(state)
+      + '&zip=' + encodeURIComponent(zip)
+      + '&benchmark=Public_AR_Current&format=jsonp&callback=' + cbName;
+    script.src = url;
+    script.onerror = () => { cleanup(); resolve(null); };
+    document.head.appendChild(script);
+  });
+}
+
+// Nominatim (OpenStreetMap) draws on a different, independently-maintained
+// address dataset than Census/TIGER, so it catches a different set of
+// addresses — useful as a last-resort fallback. Serialized with a small
+// delay between calls out of courtesy to the free public instance.
+let nominatimQueue = Promise.resolve();
+function queuedNominatim(fn){
+  const run = nominatimQueue.then(() => new Promise(res => setTimeout(res, 250))).then(fn).catch(() => null);
+  nominatimQueue = run.catch(() => {});
+  return run;
+}
+async function nominatimGeocodeStructured(street, city, state, zip){
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us`
+    + `&street=${encodeURIComponent(street)}&city=${encodeURIComponent(city)}`
+    + `&state=${encodeURIComponent(state)}&postalcode=${encodeURIComponent(zip)}`;
+  const resp = await fetch(url, {headers: {'Accept':'application/json'}});
+  if(!resp.ok) return null;
+  const data = await resp.json();
+  if(!data.length) return null;
+  return {lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon)};
+}
+
+/* ============================================================
+   BOUNDARY OUTLINES (state / city / zip) via U.S. Census TIGERweb
+   — the official source for these administrative/statistical boundaries.
+   Fails silently (no outline drawn) if the service is unreachable or has
+   no match; this is a visual nice-to-have, never worth blocking a search.
+   ============================================================ */
+const STATE_FIPS = {AL:'01',AK:'02',AZ:'04',AR:'05',CA:'06',CO:'08',CT:'09',DE:'10',DC:'11',FL:'12',GA:'13',
+  HI:'15',ID:'16',IL:'17',IN:'18',IA:'19',KS:'20',KY:'21',LA:'22',ME:'23',MD:'24',MA:'25',MI:'26',MN:'27',
+  MS:'28',MO:'29',MT:'30',NE:'31',NV:'32',NH:'33',NJ:'34',NM:'35',NY:'36',NC:'37',ND:'38',OH:'39',OK:'40',
+  OR:'41',PA:'42',RI:'44',SC:'45',SD:'46',TN:'47',TX:'48',UT:'49',VT:'50',VA:'51',WA:'53',WV:'54',WI:'55',WY:'56',PR:'72'};
+
+async function fetchTigerGeoJSON(url){
+  try{
+    const resp = await fetch(url);
+    if(!resp.ok){ console.warn('TIGERweb HTTP error', resp.status, url); return null; }
+    const gj = await resp.json();
+    if(gj && gj.error){ console.warn('TIGERweb API error:', gj.error, url); return null; }
+    if(!gj || !gj.features || !gj.features.length) return null;
+    return gj;
+  } catch(e){ console.warn('TIGERweb fetch failed (network/CORS?):', e.message, url); return null; }
+}
+function fetchStateBoundary(stateAbbrev){
+  const url = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer/0/query'
+    + `?where=${encodeURIComponent(`STUSAB='${stateAbbrev}'`)}`
+    + '&outFields=NAME&returnGeometry=true&maxAllowableOffset=0.01&f=geojson';
+  return fetchTigerGeoJSON(url);
+}
+function fetchZipBoundary(zip){
+  const url = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/query'
+    + `?where=${encodeURIComponent(`ZCTA5='${zip}'`)}`
+    + '&outFields=ZCTA5&returnGeometry=true&maxAllowableOffset=0.0005&f=geojson';
+  return fetchTigerGeoJSON(url);
+}
+async function fetchCityBoundary(cityName, stateAbbrev){
+  const nameEscaped = cityName.replace(/'/g, "''");
+  const fips = stateAbbrev ? STATE_FIPS[stateAbbrev] : null;
+  const stateClause = fips ? ` AND STATE='${fips}'` : '';
+  const base = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Places_CouSub_ConCity_SubMCD/MapServer/';
+
+  // Try an exact match first (most precise), then fall back to a partial
+  // match — the property list filter itself matches city names as a
+  // substring, so someone typing "fort" (matching "Fort Worth" properties)
+  // should also get the "Fort Worth" boundary, not zero results.
+  const whereClauses = [
+    `UPPER(NAME)=UPPER('${nameEscaped}')${stateClause}`,
+    `UPPER(NAME) LIKE UPPER('%${nameEscaped}%')${stateClause}`
+  ];
+
+  // Try Incorporated Places (layer 4) first, then Census Designated Places
+  // (layer 5) — many well-known "cities" are technically unincorporated CDPs.
+  for(const layer of ['4', '5']){
+    for(const where of whereClauses){
+      const qs = `?where=${encodeURIComponent(where)}&outFields=NAME&returnGeometry=true&maxAllowableOffset=0.0005&f=geojson`;
+      const gj = await fetchTigerGeoJSON(base + layer + '/query' + qs);
+      if(gj) return gj;
+    }
+  }
+  return null;
+}
+async function drawBoundary(kind, value, value2){
+  boundaryLayer.clearLayers();
+  let gj = null;
+  if(kind === 'zip') gj = await fetchZipBoundary(value);
+  else if(kind === 'city') gj = await fetchCityBoundary(value, value2);
+  else if(kind === 'state') gj = await fetchStateBoundary(value);
+  if(!gj) return false;
+  const layer = L.geoJSON(gj, {
+    style: { color: '#0d5c46', weight: 2.5, fillColor: '#0d5c46', fillOpacity: 0.06, dashArray: '6,4' }
+  }).addTo(boundaryLayer);
+  const b = layer.getBounds();
+  if(b.isValid()) map.fitBounds(b, {padding:[30,30]});
+  return true;
+}
+
+// The free public geocoders occasionally respond slowly rather than genuinely
+// failing to match — a slow reply and a real "no match" look identical once
+// a single attempt times out. Retrying once, with a longer timeout, turns
+// most of that flakiness into a success instead of a false "not found".
+async function withRetry(fn, retries){
+  retries = retries === undefined ? 1 : retries;
+  for(let i=0; i<=retries; i++){
+    try{
+      const result = await fn();
+      if(result) return result;
+    } catch(e){ /* swallow and retry */ }
+  }
+  return null;
+}
+
+async function geocodeQuery(q){
+  const zipMatch = q.match(/^\d{5}$/);
+  if(zipMatch){
+    const hit = PROPS.find(p => p.z === q && p.la != null);
+    if(hit) return {lat: hit.la, lon: hit.lo};
+  }
+  // Try Census first (best for full street addresses) — retry once with a
+  // longer timeout, since a slow reply looks identical to a real miss.
+  let pt = await withRetry(() => censusGeocodeJSONP(q, 12000), 1);
+  if(pt) return pt;
+  // Fall back to Nominatim (better for "City, ST" / place names, and a
+  // different address dataset than Census)
+  pt = await withRetry(() => nominatimGeocode(q), 1);
+  if(pt) return pt;
+  throw new Error('Could not locate "' + q + '". Try a fuller address, or a 5-digit zip code.');
+}
+
+/* ============================================================
+   CONCURRENCY-LIMITED GEOCODE QUEUE FOR RESULT ROWS
+   ============================================================ */
+const MAX_GEOCODE = 600;      // hard cap per search, to keep this responsive & polite to the free API
+const CONCURRENCY = 5;
+
+async function geocodeRows(rows, onProgress){
+  let idx = 0, completed = 0;
+  const toDo = rows.filter(r => r._geo !== 'exact' && r._geo !== 'approx' && r._geo !== 'manual');
+
+  async function worker(){
+    while(idx < toDo.length){
+      const r = toDo[idx++];
+      r._geo = 'pending';
+      const cached = geocodeCache.get(r._key);
+      if(cached){
+        r._plat = cached.lat; r._plon = cached.lon; r._geo = cached.status; r._geoSrc = cached.src;
+      } else {
+        let pt = await withRetry(() => censusGeocodeJSONP(`${r.a}, ${r.c}, ${r.s} ${r.z}`, 10000), 1);
+        let src = 'census';
+        if(!pt){
+          pt = await censusGeocodeStructuredJSONP(r.a, r.c, r.s, r.z);
+          src = 'census-alt';
+        }
+        if(!pt){
+          pt = await queuedNominatim(() => nominatimGeocodeStructured(r.a, r.c, r.s, r.z));
+          src = 'osm';
+        }
+        if(pt){
+          r._plat = pt.lat; r._plon = pt.lon; r._geo = 'exact'; r._geoSrc = src;
+        } else {
+          r._plat = r.la; r._plon = r.lo; r._geo = 'approx'; r._geoSrc = null;
+        }
+        geocodeCache.set(r._key, {lat: r._plat, lon: r._plon, status: r._geo, src: r._geoSrc});
+      }
+      completed++;
+      if(onProgress) onProgress(completed, toDo.length);
+    }
+  }
+  const workers = [];
+  for(let i=0;i<CONCURRENCY;i++) workers.push(worker());
+  await Promise.all(workers);
+}
+
+/* ============================================================
+   RESULTS RENDERING
+   ============================================================ */
+let currentResults = [];   // full working set (post radius/filter, pre or post geocode)
+let searchContext = null;  // {isRadius, point, radius, query}
+let sortState = {col:null, dir:1};
+
+function pointFor(r){
+  if(r._plat != null && r._plon != null) return [r._plat, r._plon];
+  if(r.la != null && r.lo != null) return [r.la, r.lo];
+  return null;
+}
+
+function applyOverride(r){
+  const ov = manualOverrides.get(r.f);
+  if(ov){ r._plat = ov.lat; r._plon = ov.lon; r._geo = 'manual'; r._geoSrc = 'manual'; }
+  return r;
+}
+
+window.armFix = function(fhaNum){
+  placementModeFor = fhaNum;
+  map.closePopup();
+  document.getElementById('cancelFixBtn').style.display = 'inline-block';
+  setStatus('Click anywhere on the map to set the location for FHA #' + fhaNum + '. (Or click "Cancel fix".)');
+};
+document.getElementById('cancelFixBtn').addEventListener('click', () => {
+  placementModeFor = null;
+  document.getElementById('cancelFixBtn').style.display = 'none';
+  setStatus('Fix cancelled.');
+});
+map.on('click', (e) => {
+  if(!placementModeFor) return;
+  const fhaNum = placementModeFor;
+  placementModeFor = null;
+  document.getElementById('cancelFixBtn').style.display = 'none';
+  manualOverrides.set(fhaNum, {lat: e.latlng.lat, lon: e.latlng.lng});
+  let touched = 0;
+  for(const r of currentResults){
+    if(r.f === fhaNum){ applyOverride(r); touched++; }
+  }
+  recomputeDistancesIfRadius();
+  recomputePolygonMembershipIfDrawn();
+  if(touched) renderAll(document.getElementById('resultsTitle').textContent);
+  setStatus(`Location set for FHA #${fhaNum}. Use "Export corrections" to save this so it isn't lost when you reopen the file.`);
+});
+
+function recomputeDistancesIfRadius(){
+  if(!searchContext || !searchContext.isRadius) return;
+  const {point, radius} = searchContext;
+  for(const r of currentResults){
+    const pt = pointFor(r);
+    if(pt) r._dist = haversineMiles(point.lat, point.lon, pt[0], pt[1]);
+  }
+  // drop anything that, now with exact coordinates, is actually outside the radius
+  currentResults = currentResults.filter(r => r._dist === undefined || r._dist <= radius);
+  currentResults.sort((a,b) => (a._dist ?? 1e9) - (b._dist ?? 1e9));
+}
+
+function assignNumbers(){
+  currentResults.forEach((r,i) => { r._num = i+1; });
+}
+
+function bindPropertyPopup(marker, r){
+  const dist = r._dist !== undefined ? `${r._dist.toFixed(1)} mi away<br>` : '';
+  const srcLabel = r._geoSrc === 'census' ? ' (Census)' : r._geoSrc === 'census-alt' ? ' (Census, alt parser)' : r._geoSrc === 'osm' ? ' (OpenStreetMap)' : '';
+  const geoLabel = r._geo === 'exact' ? 'exact street address' + srcLabel
+                  : r._geo === 'manual' ? 'manually corrected location'
+                  : r._geo === 'pending' ? 'locating…'
+                  : 'approximate (zip area) — no geocoder could match this address';
+  marker.bindPopup(
+    `<div class="popup-title">#${r._num} — ${escapeHtml(r.n)}</div>` +
+    `<div class="popup-meta">${escapeHtml(r.a)}, ${escapeHtml(r.c)}, ${r.s} ${r.z}<br>` +
+    `${dist}FHA #${r.f} · ${r.u ?? '—'} units<br>` +
+    `Financing type: ${escapeHtml(r.fl) || '—'}<br>` +
+    `Endorsed: ${r.e || '—'} · ${fmtMoney(r.m)}<br>` +
+    `Holder: ${escapeHtml(r.h) || '—'}<br>` +
+    `<em>${geoLabel}</em><br>` +
+    `<a href="#" onclick="armFix('${r.f}'); return false;" style="font-size:11.5px;">📍 Fix this location on the map</a></div>`,
+    {autoPan: false}
+  );
+}
+
+/* ---------- MARKERS: always show individual numbers. When enabled,
+   any pin that would visually collide with ANOTHER pin — or with the
+   search-location star — gets nudged to the nearest clear spot nearby,
+   with a thin line back to its real location. This is a general
+   collision check against everything already placed (not just pins
+   that started at the exact same coordinate), so a pin can't end up
+   hidden behind an unrelated pin, or behind the star, either. ---------- */
+const markerIndex = new Map(); // fha_number -> marker instance, for row-click map jump
+let separateOverlapping = true; // manual toggle — user-controlled
+const MIN_PIN_SEPARATION = 26; // px — roughly one pin's width
+
+function isClearOfAll(px, occupied, minSep){
+  for(const o of occupied){
+    const dx = px.x - o.x, dy = px.y - o.y;
+    if(Math.sqrt(dx*dx + dy*dy) < minSep) return false;
+  }
+  return true;
+}
+// Searches outward in rings around the desired spot for the nearest
+// position that doesn't collide with anything already placed.
+function findClearSpot(desiredPx, occupied, minSep){
+  if(isClearOfAll(desiredPx, occupied, minSep)) return desiredPx;
+  for(let ring = 1; ring <= 8; ring++){
+    const radius = minSep * ring * 0.85;
+    const steps = 8 * ring;
+    for(let i = 0; i < steps; i++){
+      const angle = 2 * Math.PI * i / steps;
+      const candidate = L.point(desiredPx.x + radius * Math.cos(angle), desiredPx.y + radius * Math.sin(angle));
+      if(isClearOfAll(candidate, occupied, minSep)) return candidate;
+    }
+  }
+  return desiredPx; // extremely dense edge case: give up and let it overlap
+}
+
+function placePin(r, pt){
+  const icon = numberedIcon(r._num, r._geo);
+  const m = L.marker(pt, {icon});
+  bindPropertyPopup(m, r);
+  markerLayer.addLayer(m);
+  markerIndex.set(r.f, m);
+}
+
+function computePlacements(sortedItems, starPx, extraObstacles){
+  const occupied = [];
+  if(starPx) occupied.push(starPx);
+  for(const ob of extraObstacles || []) occupied.push(ob);
+  const results = [];
+  for(const item of sortedItems){
+    const desiredPx = map.latLngToContainerPoint(item.pt);
+    const finalPx = findClearSpot(desiredPx, occupied, MIN_PIN_SEPARATION);
+    occupied.push(finalPx);
+    const moved = Math.abs(finalPx.x - desiredPx.x) > 1 || Math.abs(finalPx.y - desiredPx.y) > 1;
+    results.push({item, desiredPx, finalPx, moved});
+  }
+  return results;
+}
+
+function drawMarkers(){
+  markerLayer.clearLayers();
+  markerIndex.clear();
+  const items = currentResults.map(r => ({r, pt: pointFor(r)})).filter(x => x.pt);
+
+  if(!separateOverlapping){
+    // Toggled off: plot every property at its real coordinates, even if
+    // that means some sit exactly on top of each other.
+    for(const item of items) placePin(item.r, item.pt);
+    return;
+  }
+
+  const sorted = [...items].sort((a,b) => a.r._num - b.r._num);
+  const starPx = (searchContext && searchContext.isRadius && searchContext.point)
+    ? map.latLngToContainerPoint([searchContext.point.lat, searchContext.point.lon])
+    : null;
+
+  // Pass 1: find out which properties need to move at all.
+  const pass1 = computePlacements(sorted, starPx, []);
+  const movedTruePoints = pass1.filter(p => p.moved).map(p => p.desiredPx);
+
+  // Pass 2: re-place everything, this time also treating every line's
+  // true endpoint from pass 1 as reserved space — so a pin can never
+  // land on top of the spot another property's line is pointing to,
+  // regardless of which order they're placed in.
+  const pass2 = computePlacements(sorted, starPx, movedTruePoints);
+
+  for(const p of pass2){
+    if(p.moved){
+      const finalLatLng = map.containerPointToLatLng(p.finalPx);
+      L.polyline([p.item.pt, finalLatLng], {color:'#444', weight:2, opacity:0.9, interactive:false}).addTo(markerLayer);
+      placePin(p.item.r, finalLatLng);
+    } else {
+      placePin(p.item.r, p.item.pt);
+    }
+  }
+}
+
+function renderMap(){
+  radiusLayer.clearLayers();
+  starLayer.clearLayers();
+  const bounds = [];
+
+  if(searchContext && searchContext.isRadius && searchContext.point){
+    bounds.push([searchContext.point.lat, searchContext.point.lon]);
+    const sm = L.marker([searchContext.point.lat, searchContext.point.lon], {icon: starIcon(), zIndexOffset: 1000}).addTo(starLayer);
+    sm.bindPopup(`<div class="popup-title">★ Search location</div><div class="popup-meta">${escapeHtml(searchContext.query)}</div>`, {autoPan: false});
+    L.circle([searchContext.point.lat, searchContext.point.lon], {
+      radius: searchContext.radius * 1609.34, // miles -> meters
+      color: '#c9962b', weight: 2, fillColor: '#c9962b', fillOpacity: 0.04, dashArray: '4,6'
+    }).addTo(radiusLayer);
+  }
+  for(const r of currentResults){
+    const pt = pointFor(r);
+    if(pt) bounds.push(pt);
+  }
+
+  drawMarkers();
+  if(bounds.length) map.fitBounds(bounds, {padding:[30,30], maxZoom: 15});
+}
+
+// Recomputing nudge positions means rebuilding every marker on screen —
+// fine once, but doing that on every single intermediate zoom/pan tick
+// during an active scroll gesture is what caused the stutter/glitching.
+// Debounce so it only happens once the view has actually settled.
+function debounce(fn, waitMs){
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), waitMs); };
+}
+const debouncedRedraw = debounce(() => {
+  if(currentResults.length) drawMarkers();
+}, 200);
+map.on('zoomend moveend', debouncedRedraw);
+
+document.getElementById('separateToggle').addEventListener('change', (e) => {
+  separateOverlapping = e.target.checked;
+  if(currentResults.length) drawMarkers();
+});
+
+function buildTable(){
+  const cols = [
+    {key:'_num', label:'#'},
+    {key:'n', label:'Property'},
+    {key:'a', label:'Address'},
+    {key:'c', label:'City'},
+    {key:'s', label:'State'},
+    {key:'z', label:'Zip'},
+    {key:'_dist', label:'Miles'},
+    {key:'_geo', label:'Location'},
+    {key:'u', label:'Units'},
+    {key:'e', label:'Endorsed'},
+    {key:'m', label:'Mortgage $'},
+    {key:'fl', label:'Financing Type'},
+    {key:'f', label:'FHA #'},
+  ];
+  const hasDist = currentResults.length && currentResults[0]._dist !== undefined;
+  const visibleCols = hasDist ? cols : cols.filter(c=>c.key!=='_dist');
+
+  let html = '<table><thead><tr>';
+  for(const c of visibleCols) html += `<th data-col="${c.key}">${c.label}</th>`;
+  html += '</tr></thead><tbody>';
+  for(const r of currentResults){
+    html += `<tr data-fha="${escapeHtml(r.f)}">`;
+    for(const c of visibleCols){
+      const isNum = c.key==='u' || c.key==='m' || c.key==='_dist' || c.key==='_num';
+      let val = r[c.key];
+      if(c.key==='m') val = fmtMoney(val);
+      else if(c.key==='_dist') val = val!==undefined ? val.toFixed(1) : '—';
+      else if(c.key==='_geo'){
+        const cls = val==='exact' ? 'badge-exact' : val==='manual' ? 'badge-manual' : val==='pending' ? 'badge-pending' : val==='approx' ? 'badge-approx' : 'badge-pending';
+        const txt = val==='exact' ? 'exact' : val==='manual' ? 'manual' : val==='pending' ? 'locating…' : val==='approx' ? 'approx' : 'not located';
+        html += `<td><span class="badge ${cls}">${txt}</span></td>`;
+        continue;
+      }
+      else if(val===null || val===undefined || val==='') val = '—';
+      html += `<td class="${isNum?'num':''}">${escapeHtml(val)}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('resultsBody').innerHTML = html;
+
+  document.querySelectorAll('#resultsBody thead th').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.getAttribute('data-col');
+      if(sortState.col === col) sortState.dir *= -1;
+      else { sortState.col = col; sortState.dir = 1; }
+      currentResults.sort((a,b) => {
+        let va = a[col], vb = b[col];
+        if(va === null || va === undefined) va = '';
+        if(vb === null || vb === undefined) vb = '';
+        if(typeof va === 'string') va = va.toLowerCase();
+        if(typeof vb === 'string') vb = vb.toLowerCase();
+        if(va < vb) return -1 * sortState.dir;
+        if(va > vb) return 1 * sortState.dir;
+        return 0;
+      });
+      buildTable();
+    });
+  });
+
+  document.querySelectorAll('#resultsBody tbody tr').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const fha = tr.getAttribute('data-fha');
+      const r = currentResults.find(x => x.f === fha);
+      if(!r) return;
+      const pt = pointFor(r);
+      if(!pt){ setStatus('This property has no map location yet.', true); return; }
+      map.setView(pt, Math.max(map.getZoom(), 15), {animate:false});
+      drawMarkers(); // recompute nudge positions at the new zoom before opening
+      const m = markerIndex.get(fha);
+      if(m) m.openPopup();
+    });
+  });
+}
+
+function renderAll(titleText){
+  document.getElementById('resultsTitle').textContent = titleText;
+  document.getElementById('exportBtn').disabled = currentResults.length === 0;
+  document.getElementById('geocodeBtn').disabled = currentResults.length === 0;
+  if(currentResults.length === 0){
+    document.getElementById('resultsBody').innerHTML = '<div class="empty-state"><strong>No matching properties.</strong>Try a larger radius or different filters.</div>';
+    markerLayer.clearLayers();
+    radiusLayer.clearLayers();
+    starLayer.clearLayers();
+    if(searchContext && searchContext.isRadius && searchContext.point){
+      const sm = L.marker([searchContext.point.lat, searchContext.point.lon], {icon: starIcon(), zIndexOffset: 1000}).addTo(starLayer);
+      sm.bindPopup(`<div class="popup-title">★ Search location</div><div class="popup-meta">${escapeHtml(searchContext.query)}</div>`, {autoPan: false});
+      L.circle([searchContext.point.lat, searchContext.point.lon], {
+        radius: searchContext.radius * 1609.34,
+        color: '#c9962b', weight: 2, fillColor: '#c9962b', fillOpacity: 0.04, dashArray: '4,6'
+      }).addTo(radiusLayer);
+      map.setView([searchContext.point.lat, searchContext.point.lon], 11);
+    }
+    return;
+  }
+  assignNumbers();
+  buildTable();
+  renderMap();
+}
+
+/* ============================================================
+   GEOCODE BUTTON — on-demand street level for CURRENT results only
+   ============================================================ */
+document.getElementById('geocodeBtn').addEventListener('click', async () => {
+  if(!currentResults.length) return;
+  const btn = document.getElementById('geocodeBtn');
+  btn.disabled = true;
+
+  let toGeocode = currentResults;
+  let truncated = false;
+  if(toGeocode.length > MAX_GEOCODE){
+    toGeocode = toGeocode.slice(0, MAX_GEOCODE);
+    truncated = true;
+  }
+
+  setStatus(`Locating street addresses: 0/${toGeocode.length}…`);
+  await geocodeRows(toGeocode, (done, total) => {
+    setStatus(`Locating street addresses: ${done}/${total}…`);
+    if(done % 10 === 0 || done === total){
+      recomputeDistancesIfRadius();
+      recomputePolygonMembershipIfDrawn();
+      renderAll(document.getElementById('resultsTitle').textContent);
+    }
+  });
+  recomputeDistancesIfRadius();
+  recomputePolygonMembershipIfDrawn();
+  renderAll(document.getElementById('resultsTitle').textContent);
+
+  const exactCount = currentResults.filter(r=>r._geo==='exact').length;
+  let msg = `Done. ${exactCount}/${currentResults.length} properties located to the exact street address.`;
+  if(truncated) msg += ` (Capped at ${MAX_GEOCODE} — narrow your search to locate the rest.)`;
+  setStatus(msg);
+  btn.disabled = false;
+});
+
+/* ============================================================
+   EXPORT / CLEAR
+   ============================================================ */
+function exportCSV(){
+  if(!currentResults.length) return;
+  const hasDist = currentResults[0]._dist !== undefined;
+  const headers = ['Property','Address','City','State','Zip','Miles','LocationType','Lat','Lon','Units','Endorsed','MortgageAmount','FinancingType','SOACode','FHANumber','Holder'];
+  const lines = [headers.join(',')];
+  for(const r of currentResults){
+    const pt = pointFor(r);
+    const row = [
+      r.n, r.a, r.c, r.s, r.z,
+      hasDist ? (r._dist !== undefined ? r._dist.toFixed(2) : '') : '',
+      r._geo,
+      pt ? pt[0] : '', pt ? pt[1] : '',
+      r.u ?? '', r.e ?? '', r.m ?? '', r.fl ?? '', r.so ?? '', r.f ?? '', r.h ?? ''
+    ].map(v => `"${String(v).replace(/"/g,'""')}"`);
+    lines.push(row.join(','));
+  }
+  const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'fha_multifamily_results.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+document.getElementById('exportBtn').addEventListener('click', exportCSV);
+
+/* ---------- LOCATION CORRECTIONS EXPORT/IMPORT ---------- */
+document.getElementById('exportOverridesBtn').addEventListener('click', () => {
+  if(manualOverrides.size === 0){ setStatus('No corrections to export yet.', true); return; }
+  const obj = {};
+  manualOverrides.forEach((v, k) => { obj[k] = v; });
+  const blob = new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'fha_location_corrections.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+document.getElementById('importOverridesBtn').addEventListener('click', () => {
+  document.getElementById('importOverridesInput').click();
+});
+document.getElementById('importOverridesInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const obj = JSON.parse(reader.result);
+      let count = 0;
+      Object.entries(obj).forEach(([fhaNum, coords]) => {
+        if(coords && typeof coords.lat === 'number' && typeof coords.lon === 'number'){
+          manualOverrides.set(fhaNum, coords);
+          count++;
+        }
+      });
+      for(const r of currentResults) applyOverride(r);
+      recomputeDistancesIfRadius();
+      recomputePolygonMembershipIfDrawn();
+      if(currentResults.length) renderAll(document.getElementById('resultsTitle').textContent);
+      setStatus(`Imported ${count} location correction(s).`);
+    } catch(err){
+      setStatus('Could not read that corrections file — expecting the JSON exported by "Export corrections".', true);
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  document.getElementById('addrInput').value='';
+  document.getElementById('cityFilter').value='';
+  document.getElementById('zipFilter').value='';
+  stateSel.value='';
+  setStatus('');
+  currentResults = [];
+  searchContext = null;
+  renderAll('No search yet');
+  boundaryLayer.clearLayers();
+  radiusLayer.clearLayers();
+  starLayer.clearLayers();
+  clearDrawnArea();
+  stopDrawing();
+  document.getElementById('resultsBody').innerHTML = '<div class="empty-state"><strong>Enter an address and radius, or use the filters, to begin.</strong>Results will appear on the map and in a table here.</div>';
+  map.setView([39.5,-98.35], 4);
+});
+
+/* ============================================================
+   SEARCH BY ADDRESS + RADIUS
+   ============================================================ */
+/* ============================================================
+   SUBJECT PROPERTY (persistent reference marker)
+   ============================================================ */
+document.getElementById('setSubjectBtn').addEventListener('click', async () => {
+  const q = document.getElementById('subjectInput').value.trim();
+  if(!q){ setStatus('Enter an address for the subject property.', true); return; }
+  const btn = document.getElementById('setSubjectBtn');
+  btn.disabled = true;
+  setStatus('Locating subject property "' + q + '"…');
+  try{
+    const point = await geocodeQuery(q);
+    subjectLayer.clearLayers();
+    const m = L.marker([point.lat, point.lon], {icon: subjectIcon(), zIndexOffset: 1100}).addTo(subjectLayer);
+    m.bindPopup(`<div class="popup-title">★ Subject Property</div><div class="popup-meta">${escapeHtml(q)}</div>`, {autoPan: false});
+    document.getElementById('clearSubjectBtn').style.display = 'inline-block';
+    setStatus('Subject property set: ' + q);
+    map.setView([point.lat, point.lon], Math.max(map.getZoom(), 12));
+  } catch(err){
+    setStatus(err.message || 'Could not locate that address.', true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+document.getElementById('clearSubjectBtn').addEventListener('click', () => {
+  subjectLayer.clearLayers();
+  document.getElementById('subjectInput').value = '';
+  document.getElementById('clearSubjectBtn').style.display = 'none';
+  setStatus('Subject property cleared.');
+});
+
+document.getElementById('searchBtn').addEventListener('click', async () => {
+  const q = document.getElementById('addrInput').value.trim();
+  const radius = parseFloat(document.getElementById('radiusInput').value);
+  if(!q){ setStatus('Enter an address, city, or zip code.', true); return; }
+  if(!radius || radius <= 0){ setStatus('Enter a valid radius in miles.', true); return; }
+  if(activeBusinessTypes().size === 0){ setStatus('Check at least one property type.', true); return; }
+  if(activeFinancingGroups().size === 0){ setStatus('Check at least one financing type.', true); return; }
+
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true;
+  setStatus('Locating "' + q + '"…');
+  boundaryLayer.clearLayers();
+  clearDrawnArea();
+
+  try{
+    const point = await geocodeQuery(q);
+
+    // Stage 1: fast candidate filter using zip centroids, with a buffer
+    // (zip centroids can be a few miles off from the true street address,
+    // so we cast a wider net here and narrow it after street-level geocoding)
+    const buffer = 25;
+    const types = activeBusinessTypes();
+    const finGroups = activeFinancingGroups();
+    setStatus('Scanning candidates within ' + (radius+buffer) + ' mi (zip-level)…');
+    let candidates = PROPS
+      .filter(p => p.la != null && p.lo != null)
+      .filter(p => passesTypeFilter(p, types))
+      .filter(p => passesFinancingFilter(p, finGroups))
+      .map(p => applyOverride({...p, _dist: haversineMiles(point.lat, point.lon, p.la, p.lo)}))
+      .filter(p => p._dist <= radius + buffer)
+      .sort((a,b) => a._dist - b._dist);
+
+    currentResults = candidates;
+    searchContext = {isRadius:true, point, radius, query:q};
+    renderAll(`${candidates.length.toLocaleString()} candidates within ~${radius} mi of "${q}" (zip-level, before street geocoding)`);
+
+    if(candidates.length === 0){
+      setStatus('No properties found. Try a larger radius.');
+      btn.disabled = false;
+      return;
+    }
+
+    // Stage 2: geocode the candidates to the real street address, then
+    // apply the true radius filter with exact coordinates.
+    let toGeocode = candidates;
+    let truncated = false;
+    if(toGeocode.length > MAX_GEOCODE){
+      toGeocode = toGeocode.slice(0, MAX_GEOCODE);
+      truncated = true;
+    }
+    setStatus(`Locating street addresses: 0/${toGeocode.length}…`);
+    await geocodeRows(toGeocode, (done, total) => {
+      setStatus(`Locating street addresses: ${done}/${total}…`);
+      if(done % 10 === 0 || done === total){
+        recomputeDistancesIfRadius();
+        recomputePolygonMembershipIfDrawn();
+        renderAll(document.getElementById('resultsTitle').textContent);
+      }
+    });
+
+    recomputeDistancesIfRadius();
+    recomputePolygonMembershipIfDrawn();
+    const exactCount = currentResults.filter(r=>r._geo==='exact').length;
+    renderAll(`${currentResults.length.toLocaleString()} properties within ${radius} mi of "${q}"`);
+    let msg = `Found ${currentResults.length.toLocaleString()} properties, ${exactCount} at exact street level.`;
+    if(truncated) msg += ` (Only the nearest ${MAX_GEOCODE} candidates were street-geocoded — narrow the radius for full precision.)`;
+    setStatus(msg);
+  } catch(err){
+    setStatus(err.message || 'Something went wrong.', true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('addrInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter') document.getElementById('searchBtn').click();
+});
+
+/* ============================================================
+   DIRECT FILTERS (state / city / zip) — no geocoding until requested
+   ============================================================ */
+document.getElementById('filterBtn').addEventListener('click', async () => {
+  const state = stateSel.value;
+  const cityRaw = document.getElementById('cityFilter').value.trim();
+  const city = cityRaw.toLowerCase();
+  const zip = document.getElementById('zipFilter').value.trim();
+  const types = activeBusinessTypes();
+  const finGroups = activeFinancingGroups();
+
+  if(types.size === 0){
+    setStatus('Check at least one property type.', true);
+    return;
+  }
+  if(finGroups.size === 0){
+    setStatus('Check at least one financing type.', true);
+    return;
+  }
+  if(!state && !city && !zip){
+    setStatus('Choose at least one filter (state, city, or zip).', true);
+    return;
+  }
+
+  const results = PROPS.filter(p => {
+    if(!passesTypeFilter(p, types)) return false;
+    if(!passesFinancingFilter(p, finGroups)) return false;
+    if(state && p.s !== state) return false;
+    if(city && !p.c.toLowerCase().includes(city)) return false;
+    if(zip && p.z !== zip.padStart(5,'0')) return false;
+    return true;
+  });
+
+  currentResults = results.map(r => applyOverride({...r}));
+  searchContext = {isRadius:false};
+  radiusLayer.clearLayers();
+  clearDrawnArea();
+
+  const parts = [];
+  if(city) parts.push(`city contains "${city}"`);
+  if(state) parts.push(`state = ${state}`);
+  if(zip) parts.push(`zip = ${zip}`);
+  renderAll(`${results.length.toLocaleString()} properties — ${parts.join(', ')}`);
+
+  if(results.length > MAX_GEOCODE){
+    setStatus(`Found ${results.length.toLocaleString()} properties (zip-level pins shown). That's a lot to street-geocode at once — narrow your filters, or click "Locate street addresses" to geocode the first ${MAX_GEOCODE}.`);
+  } else {
+    setStatus(`Found ${results.length.toLocaleString()} properties (zip-level pins shown). Click "Locate street addresses" for exact pins.`);
+  }
+
+  // Outline the most specific thing searched for: zip > city (+state) > state alone.
+  const zip5 = zip ? zip.padStart(5,'0') : '';
+  let drew = false;
+  if(zip5) drew = await drawBoundary('zip', zip5);
+  else if(cityRaw) drew = await drawBoundary('city', cityRaw, state || undefined);
+  else if(state) drew = await drawBoundary('state', state);
+  if((zip5 || cityRaw || state) && !drew){
+    setStatus(document.getElementById('status').textContent + ' (Could not draw a boundary outline for that area — Census boundary service may be unavailable.)');
+  }
+});
+
+})(); // end initApp
+</script>
+</body>
+</html>
