@@ -1,0 +1,41 @@
+name: Update HUD data
+
+on:
+  schedule:
+    # Runs at 12:00 UTC on the 10th of every month — a few days after
+    # HUD's month-end refresh, so this month's files are ready.
+    - cron: '0 12 10 * *'
+  workflow_dispatch: {}   # lets you also trigger it manually from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pandas openpyxl zipcodes requests
+
+      - name: Rebuild index.html from live HUD data
+        run: python build.py
+
+      - name: Commit and push if anything changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --staged --quiet; then
+            echo "No changes — HUD data hasn't changed since last run."
+          else
+            git commit -m "Auto-update from HUD data ($(date -u +%Y-%m-%d))"
+            git push
+          fi
