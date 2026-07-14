@@ -309,6 +309,35 @@
   }
   .dropdown-panel input{width:auto; flex-shrink:0;}
 
+  .tristate{display:flex; border:1px solid var(--line); border-radius:3px; overflow:hidden;}
+  .tristate-btn{
+    flex:1;
+    background:#fff;
+    border:none;
+    border-right:1px solid var(--line);
+    padding:6px 4px;
+    font-size:11px;
+    font-family:var(--sans);
+    cursor:pointer;
+    color:var(--ink-soft);
+  }
+  .tristate-btn:last-child{border-right:none;}
+  .tristate-btn:hover{background:var(--accent-soft);}
+  .tristate-btn.active{background:var(--accent); color:#fff; font-weight:600;}
+  .tristate-row{margin-bottom:10px;}
+  .tristate-row label{display:block; font-size:12px; font-weight:600; margin-bottom:4px;}
+
+  .clickPickBtn{
+    background:none;
+    border:none;
+    color:var(--accent);
+    font-size:11px;
+    cursor:pointer;
+    padding:0;
+    text-decoration:underline;
+  }
+  .clickPickBtn:hover{color:#0a4736;}
+
   .star-pin{
     width:30px; height:30px;
     border-radius:50%;
@@ -345,10 +374,11 @@
         <label for="subjectInput">Address</label>
         <input type="text" id="subjectInput" placeholder="e.g. 123 Main St, Dallas, TX 75201">
       </div>
-      <div style="display:flex; gap:8px;">
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
         <button id="setSubjectBtn" type="button" class="secondaryBtn" style="flex:1;">★ Set subject property</button>
         <button id="clearSubjectBtn" type="button" style="display:none;flex:0 0 auto;background:#fff;border:1px solid var(--line);color:var(--ink-soft);padding:9px 12px;font-size:12px;border-radius:3px;">Clear</button>
       </div>
+      <button id="pickSubjectBtn" type="button" class="clickPickBtn">📍 Click map instead</button>
       <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Marks a fixed reference point (e.g. your subject property) with a gold star. Stays on the map across searches until you clear it — separate from the red star used for address+radius search.</p>
 
       <div class="divider"></div>
@@ -367,12 +397,15 @@
         <input type="number" id="radiusInput" value="10" min="0.5" max="500" step="0.5">
       </div>
       <button id="searchBtn">Search</button>
+      <div style="margin-top:6px;">
+        <button id="pickRadiusBtn" type="button" class="clickPickBtn">📍 Click map instead</button>
+      </div>
       <div id="status"></div>
-      <button id="cancelFixBtn" type="button" style="display:none;margin-top:6px;width:100%;background:#fff;border:1px solid var(--brick);color:var(--brick);padding:6px;font-size:11.5px;border-radius:3px;">Cancel fix</button>
+      <button id="cancelPickBtn" type="button" style="display:none;margin-top:6px;width:100%;background:#fff;border:1px solid var(--brick);color:var(--brick);padding:6px;font-size:11.5px;border-radius:3px;">Cancel</button>
 
       <div class="divider"></div>
 
-      <h2>Or filter directly</h2>
+      <h2>Search by state / city / zip / county</h2>
       <div class="row2">
         <div class="field">
           <label for="stateFilter">State</label>
@@ -383,11 +416,17 @@
           <input type="text" id="zipFilter" placeholder="e.g. 75201">
         </div>
       </div>
-      <div class="field">
-        <label for="cityFilter">City</label>
-        <input type="text" id="cityFilter" placeholder="e.g. Dallas">
+      <div class="row2">
+        <div class="field">
+          <label for="cityFilter">City</label>
+          <input type="text" id="cityFilter" placeholder="e.g. Dallas">
+        </div>
+        <div class="field">
+          <label for="countyFilter">County</label>
+          <input type="text" id="countyFilter" placeholder="e.g. Tarrant">
+        </div>
       </div>
-      <button id="filterBtn" class="secondaryBtn">Apply filters</button>
+      <button id="filterBtn" class="secondaryBtn">Search</button>
 
       <div class="divider"></div>
 
@@ -414,7 +453,7 @@
           <label><input type="checkbox" id="btHealthcare"> Healthcare (nursing homes / assisted living / board+care)</label>
         </div>
       </div>
-      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Residential only by default. Applies to both the address search and the direct filters above.</p>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Residential only by default. Applies to every search mode.</p>
 
       <div class="divider"></div>
 
@@ -433,6 +472,54 @@
         </div>
       </div>
       <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">All checked by default. Only affects Residential properties — Healthcare/Hospitals are controlled by Property type above.</p>
+
+      <div class="divider"></div>
+
+      <h2>Subsidized</h2>
+      <div class="tristate-row">
+        <div class="tristate" data-filter="sub">
+          <button type="button" class="tristate-btn active" data-value="include">Include</button>
+          <button type="button" class="tristate-btn" data-value="exclude">Exclude</button>
+          <button type="button" class="tristate-btn" data-value="only">Only</button>
+        </div>
+      </div>
+
+      <h2>Section 8</h2>
+      <div class="tristate-row">
+        <div class="tristate" data-filter="sec8">
+          <button type="button" class="tristate-btn active" data-value="include">Include</button>
+          <button type="button" class="tristate-btn" data-value="exclude">Exclude</button>
+          <button type="button" class="tristate-btn" data-value="only">Only</button>
+        </div>
+      </div>
+
+      <h2>Use Restriction</h2>
+      <div class="tristate-row">
+        <div class="tristate" data-filter="restr">
+          <button type="button" class="tristate-btn active" data-value="include">Include</button>
+          <button type="button" class="tristate-btn" data-value="exclude">Exclude</button>
+          <button type="button" class="tristate-btn" data-value="only">Only</button>
+        </div>
+      </div>
+
+      <h2>Tax Credit (LIHTC)</h2>
+      <div class="tristate-row">
+        <div class="tristate" data-filter="tc">
+          <button type="button" class="tristate-btn active" data-value="include">Include</button>
+          <button type="button" class="tristate-btn" data-value="exclude">Exclude</button>
+          <button type="button" class="tristate-btn" data-value="only">Only</button>
+        </div>
+      </div>
+
+      <h2>Tax-Exempt Bond</h2>
+      <div class="tristate-row">
+        <div class="tristate" data-filter="te">
+          <button type="button" class="tristate-btn active" data-value="include">Include</button>
+          <button type="button" class="tristate-btn" data-value="exclude">Exclude</button>
+          <button type="button" class="tristate-btn" data-value="only">Only</button>
+        </div>
+      </div>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">All default to Include (no filtering). Properties with no data for a flag are never excluded by "Exclude" and never shown by "Only" for that flag.</p>
 
       <div class="divider"></div>
 
@@ -456,13 +543,19 @@
 
       <div class="divider"></div>
       <p style="font-size:11px;color:var(--ink-soft);line-height:1.6;">
-        Data: HUD Insured Multifamily Mortgages (active) cross-referenced with HUD's Insured Active Multifamily FHA Property Addresses file by FHA project number.<br><br>
+        Data: HUD Insured Multifamily Mortgages (active) cross-referenced with HUD's Insured Active Multifamily FHA Property Addresses file by FHA project number, plus HUD's Active Multifamily Portfolio data for subsidy/restriction/tax-credit flags.<br><br>
         <span class="badge badge-exact">exact</span> = geocoded to the real street address, on demand, only for properties in your current results. Tries the U.S. Census geocoder first (two different parsers), then OpenStreetMap as a last resort — different address databases catch different addresses.<br>
         <span class="badge badge-approx">approx</span> = none of those could match the address; falling back to the ZIP code centroid.<br>
         <span class="badge badge-manual">manual</span> = you corrected this pin by hand.<br><br>
-        ★ = the address/location you searched for. The search radius, the drawn area, and the city/state/zip boundary (via U.S. Census TIGERweb — may not draw if that service is briefly unavailable) all show the same way: a solid green outline.<br><br>
-        Every pin always shows its own property number. If two properties sit right on top of each other on screen (e.g. sharing a zip centroid), they're nudged apart slightly with a thin line back to the true spot. Click any table row to jump the map straight to that property and open its details.
+        ★ = the address/location you searched for. The search radius, the drawn area, and the city/state/zip/county boundary (via U.S. Census TIGERweb — may not draw if that service is briefly unavailable) all show the same way: a solid green outline.<br><br>
+        Every pin always shows its own property number. If two properties sit right on top of each other on screen (e.g. sharing a zip centroid), they're nudged apart slightly with a thin line back to the true spot. Click any table row to jump the map straight to that property and open its details.<br><br>
+        County names are derived from each property's ZIP code (not HUD's own county field, which has gaps), so county search is complete and consistently spelled for every property.
       </p>
+
+      <div class="divider"></div>
+
+      <h2>Data sources</h2>
+      <div id="sourcesInfo" style="font-size:11px;color:var(--ink-soft);line-height:1.6;"></div>
     </div>
 
     <div id="content">
@@ -491,12 +584,31 @@
 __DATA_PLACEHOLDER__
 </script>
 
+<script type="application/json" id="buildMeta">
+__METADATA_PLACEHOLDER__
+</script>
+
 <script>
 /* ============================================================
    DATA
    ============================================================ */
 const PROPS = JSON.parse(document.getElementById('propData').textContent);
 document.getElementById('recCount').textContent = PROPS.length.toLocaleString();
+
+const BUILD_META = JSON.parse(document.getElementById('buildMeta').textContent);
+
+document.getElementById('sourcesInfo').innerHTML = `
+  <strong style="color:var(--ink);">HUD Insured Active Multifamily FHA Property Addresses</strong><br>
+  Property name, street address, city, zip, and financing/Section-of-Act type.<br>
+  HUD lists this data as of: ${BUILD_META.addressesDate || 'unknown'}<br><br>
+  <strong style="color:var(--ink);">HUD Insured Multifamily Mortgages (Active)</strong><br>
+  Units, endorsement date, mortgage amount, holder, business type (residential/healthcare/hospital), tax credit (LIHTC) and tax-exempt bond flags — also used to confirm each property is an active, currently-insured project.<br>
+  HUD lists this data as of: ${BUILD_META.mortgageDate || 'unknown'}<br><br>
+  <strong style="color:var(--ink);">HUD Active Multifamily Portfolio — Property Level Data</strong><br>
+  Subsidized status, Section 8 assistance, and use-restriction flags.<br>
+  HUD lists this data as of: ${BUILD_META.portfolioDate || 'unknown'}<br><br>
+  <strong style="color:var(--ink);">This site last refreshed with new HUD data:</strong> ${BUILD_META.buildDate || 'unknown'}
+`;
 
 // give every record a stable key + mutable geocode status, without touching source data
 for (const p of PROPS) {
@@ -590,7 +702,8 @@ document.getElementById('mapExpandBtn').addEventListener('click', () => {
 /* ============================================================
    DRAW AN AREA ON THE MAP
    ============================================================ */
-let drawMode = false;
+let activeClickMode = null; // 'draw' | 'fix' | 'radiusPick' | 'subjectPick' | null
+let fixTargetFha = null;
 let drawnLatLngs = [];
 let drawPreviewLayer = null; // temporary line while actively drawing
 let drawnAreaLayer = null;   // finalized shape shown after finishing
@@ -605,23 +718,28 @@ function updateDrawPreview(){
   drawPreviewLayer = L.polyline(drawnLatLngs, {color:'#0d5c46', weight:2, dashArray:'4,4'}).addTo(map);
 }
 
-function startDrawing(){
+// Resets all four click-picking modes (draw / fix-location / radius-pick /
+// subject-pick) so only one can ever be active at a time.
+function disarmAllClickModes(){
+  if(drawPreviewLayer){ map.removeLayer(drawPreviewLayer); drawPreviewLayer = null; }
+  drawnLatLngs = [];
+  document.getElementById('drawControls').style.display = 'none';
+  document.getElementById('cancelPickBtn').style.display = 'none';
+  map.getContainer().style.cursor = '';
+  activeClickMode = null;
+  fixTargetFha = null;
+}
+
+function armDraw(){
+  disarmAllClickModes();
   clearDrawnArea();
-  drawMode = true;
+  activeClickMode = 'draw';
   drawnLatLngs = [];
   updateDrawPreview();
   document.getElementById('drawControls').style.display = 'block';
   document.getElementById('finishDrawBtn').disabled = true;
   map.getContainer().style.cursor = 'crosshair';
   setStatus('Click points on the map to outline an area (need at least 3).');
-}
-
-function stopDrawing(){
-  drawMode = false;
-  map.getContainer().style.cursor = '';
-  document.getElementById('drawControls').style.display = 'none';
-  if(drawPreviewLayer){ map.removeLayer(drawPreviewLayer); drawPreviewLayer = null; }
-  drawnLatLngs = [];
 }
 
 // Standard ray-casting point-in-polygon test.
@@ -640,7 +758,7 @@ function pointInPolygon(pt, polygon){ // pt: [lat,lon]; polygon: L.LatLng[]
 function finishDrawing(){
   if(drawnLatLngs.length < 3) return;
   const polygonPoints = drawnLatLngs.slice();
-  stopDrawing();
+  disarmAllClickModes();
 
   drawnAreaLayer = L.polygon(polygonPoints, {
     color: '#0d5c46', weight: 2.5, fillColor: '#0d5c46', fillOpacity: 0.08
@@ -655,6 +773,7 @@ function finishDrawing(){
     if(p.la == null || p.lo == null) return false;
     if(!passesTypeFilter(p, types)) return false;
     if(!passesFinancingFilter(p, finGroups)) return false;
+    if(!passesTriStateFilters(p)) return false;
     return pointInPolygon([p.la, p.lo], polygonPoints);
   });
 
@@ -684,24 +803,65 @@ function recomputePolygonMembershipIfDrawn(){
   });
 }
 
+// SINGLE unified map click handler for all four click-picking modes.
 map.on('click', (e) => {
-  if(!drawMode) return;
-  drawnLatLngs.push(e.latlng);
-  updateDrawPreview();
-  document.getElementById('finishDrawBtn').disabled = drawnLatLngs.length < 3;
+  if(activeClickMode === 'draw'){
+    drawnLatLngs.push(e.latlng);
+    updateDrawPreview();
+    document.getElementById('finishDrawBtn').disabled = drawnLatLngs.length < 3;
+  } else if(activeClickMode === 'fix'){
+    const fhaNum = fixTargetFha;
+    disarmAllClickModes();
+    manualOverrides.set(fhaNum, {lat: e.latlng.lat, lon: e.latlng.lng});
+    let touched = 0;
+    for(const r of currentResults){
+      if(r.f === fhaNum){ applyOverride(r); touched++; }
+    }
+    recomputeDistancesIfRadius();
+    recomputePolygonMembershipIfDrawn();
+    recomputeDistancesFromSubject();
+    if(touched) renderAll(document.getElementById('resultsTitle').textContent);
+    setStatus(`Location set for FHA #${fhaNum}. Use "Export corrections" to save this so it isn't lost when you reopen the file.`);
+  } else if(activeClickMode === 'radiusPick'){
+    disarmAllClickModes();
+    const label = `map point (${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)})`;
+    runRadiusSearchFromPoint({lat: e.latlng.lat, lon: e.latlng.lng}, label);
+  } else if(activeClickMode === 'subjectPick'){
+    disarmAllClickModes();
+    const label = `map point (${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)})`;
+    setSubjectFromPoint({lat: e.latlng.lat, lon: e.latlng.lng}, label);
+  }
 });
 map.on('dblclick', (e) => {
-  if(!drawMode) return;
+  if(activeClickMode !== 'draw') return;
   if(drawnLatLngs.length >= 3){
     e.originalEvent && e.originalEvent.preventDefault();
     finishDrawing();
   }
 });
-document.getElementById('drawAreaBtn').addEventListener('click', startDrawing);
+document.getElementById('drawAreaBtn').addEventListener('click', armDraw);
 document.getElementById('finishDrawBtn').addEventListener('click', finishDrawing);
 document.getElementById('cancelDrawBtn').addEventListener('click', () => {
-  stopDrawing();
+  disarmAllClickModes();
   setStatus('Draw cancelled.');
+});
+document.getElementById('cancelPickBtn').addEventListener('click', () => {
+  disarmAllClickModes();
+  setStatus('Cancelled.');
+});
+document.getElementById('pickRadiusBtn').addEventListener('click', () => {
+  disarmAllClickModes();
+  activeClickMode = 'radiusPick';
+  map.getContainer().style.cursor = 'crosshair';
+  document.getElementById('cancelPickBtn').style.display = 'inline-block';
+  setStatus('Click anywhere on the map to search from that point.');
+});
+document.getElementById('pickSubjectBtn').addEventListener('click', () => {
+  disarmAllClickModes();
+  activeClickMode = 'subjectPick';
+  map.getContainer().style.cursor = 'crosshair';
+  document.getElementById('cancelPickBtn').style.display = 'inline-block';
+  setStatus('Click anywhere on the map to set the subject property location.');
 });
 
 let markerLayer = L.layerGroup().addTo(map);
@@ -750,7 +910,6 @@ function subjectIcon(){
 }
 let searchMarker = null;
 const manualOverrides = new Map(); // fha_number -> {lat, lon}
-let placementModeFor = null;       // fha_number currently awaiting a map click
 
 /* ============================================================
    PROPERTY TYPE FILTER
@@ -788,6 +947,39 @@ function passesFinancingFilter(p, groups){
   if(p.bt !== 'R') return true; // bucket scheme only applies to residential; healthcare/hospitals controlled by Property type
   return groups.has(p.grp);
 }
+
+/* ---------- TRI-STATE FILTERS (Subsidized / Section 8 / Use Restriction / Tax Credit / Tax-Exempt Bond) ---------- */
+function getTristateValue(filterKey){
+  const group = document.querySelector(`.tristate[data-filter="${filterKey}"]`);
+  if(!group) return 'include';
+  const active = group.querySelector('.tristate-btn.active');
+  return active ? active.dataset.value : 'include';
+}
+// A property with no data for a flag (null) is never excluded by "Exclude"
+// and never shown by "Only" — we can't confirm it either way, so we don't
+// let an unknown value masquerade as a definite yes or no.
+function passesTriStateFilters(p){
+  const keys = ['sub','sec8','restr','tc','te'];
+  for(const key of keys){
+    const mode = getTristateValue(key);
+    if(mode === 'include') continue;
+    const val = p[key];
+    if(mode === 'exclude'){
+      if(val === true) return false;
+    } else if(mode === 'only'){
+      if(val !== true) return false;
+    }
+  }
+  return true;
+}
+document.querySelectorAll('.tristate').forEach(group => {
+  group.querySelectorAll('.tristate-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      group.querySelectorAll('.tristate-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+});
 
 /* ---------- DROPDOWN UI (Property type / Financing type) ---------- */
 function setupDropdown(wrapperId, btnId, panelId, updateLabel){
@@ -1192,32 +1384,14 @@ function applyOverride(r){
 }
 
 window.armFix = function(fhaNum){
-  placementModeFor = fhaNum;
+  disarmAllClickModes();
+  activeClickMode = 'fix';
+  fixTargetFha = fhaNum;
   map.closePopup();
-  document.getElementById('cancelFixBtn').style.display = 'inline-block';
-  setStatus('Click anywhere on the map to set the location for FHA #' + fhaNum + '. (Or click "Cancel fix".)');
+  map.getContainer().style.cursor = 'crosshair';
+  document.getElementById('cancelPickBtn').style.display = 'inline-block';
+  setStatus('Click anywhere on the map to set the location for FHA #' + fhaNum + '. (Or click "Cancel".)');
 };
-document.getElementById('cancelFixBtn').addEventListener('click', () => {
-  placementModeFor = null;
-  document.getElementById('cancelFixBtn').style.display = 'none';
-  setStatus('Fix cancelled.');
-});
-map.on('click', (e) => {
-  if(!placementModeFor) return;
-  const fhaNum = placementModeFor;
-  placementModeFor = null;
-  document.getElementById('cancelFixBtn').style.display = 'none';
-  manualOverrides.set(fhaNum, {lat: e.latlng.lat, lon: e.latlng.lng});
-  let touched = 0;
-  for(const r of currentResults){
-    if(r.f === fhaNum){ applyOverride(r); touched++; }
-  }
-  recomputeDistancesIfRadius();
-  recomputePolygonMembershipIfDrawn();
-  recomputeDistancesFromSubject();
-  if(touched) renderAll(document.getElementById('resultsTitle').textContent);
-  setStatus(`Location set for FHA #${fhaNum}. Use "Export corrections" to save this so it isn't lost when you reopen the file.`);
-});
 
 function recomputeDistancesIfRadius(){
   if(!searchContext || !searchContext.isRadius) return;
@@ -1254,11 +1428,14 @@ function bindPropertyPopup(marker, r){
                   : r._geo === 'manual' ? 'manually corrected location'
                   : r._geo === 'pending' ? 'locating…'
                   : 'approximate (zip area) — no geocoder could match this address';
+  const flags = flagsSummary(r);
+  const flagsLine = flags ? `Flags: ${escapeHtml(flags)}<br>` : '';
   marker.bindPopup(
     `<div class="popup-title">#${r._num} — ${escapeHtml(r.n)}</div>` +
-    `<div class="popup-meta">${escapeHtml(r.a)}, ${escapeHtml(r.c)}, ${r.s} ${r.z}<br>` +
+    `<div class="popup-meta">${escapeHtml(r.a)}, ${escapeHtml(r.c)}${r.county ? ', ' + escapeHtml(r.county) : ''}, ${r.s} ${r.z}<br>` +
     `${dist}${subjectDist}FHA #${r.f} · ${r.u ?? '—'} units<br>` +
     `Financing type: ${escapeHtml(r.fl) || '—'}<br>` +
+    `${flagsLine}` +
     `Endorsed: ${r.e || '—'} · ${fmtMoney(r.m)}<br>` +
     `Holder: ${escapeHtml(r.h) || '—'}<br>` +
     `<em>${geoLabel}</em><br>` +
@@ -1403,12 +1580,22 @@ document.getElementById('separateToggle').addEventListener('change', (e) => {
   if(currentResults.length) drawMarkers();
 });
 
+function flagsSummary(r){
+  const flags = [];
+  if(r.sub === true) flags.push('Sub');
+  if(r.sec8 === true) flags.push('Sec8');
+  if(r.restr === true) flags.push('Restr');
+  if(r.tc === true) flags.push('TC');
+  if(r.te === true) flags.push('TE');
+  return flags.join(', ');
+}
 function buildTable(){
   const cols = [
     {key:'_num', label:'#'},
     {key:'n', label:'Property'},
     {key:'a', label:'Address'},
     {key:'c', label:'City'},
+    {key:'county', label:'County'},
     {key:'s', label:'State'},
     {key:'z', label:'Zip'},
     {key:'_dist', label:'Miles'},
@@ -1418,6 +1605,7 @@ function buildTable(){
     {key:'e', label:'Endorsed'},
     {key:'m', label:'Mortgage $'},
     {key:'fl', label:'Financing Type'},
+    {key:'_flags', label:'Flags'},
     {key:'f', label:'FHA #'},
   ];
   const hasDist = currentResults.length && currentResults[0]._dist !== undefined;
@@ -1435,7 +1623,7 @@ function buildTable(){
     html += `<tr data-fha="${escapeHtml(r.f)}">`;
     for(const c of visibleCols){
       const isNum = c.key==='u' || c.key==='m' || c.key==='_dist' || c.key==='_distSubject' || c.key==='_num';
-      let val = r[c.key];
+      let val = c.key === '_flags' ? flagsSummary(r) : r[c.key];
       if(c.key==='m') val = fmtMoney(val);
       else if(c.key==='_dist' || c.key==='_distSubject') val = val!==undefined ? val.toFixed(1) : '—';
       else if(c.key==='_geo'){
@@ -1555,17 +1743,20 @@ function exportCSV(){
   if(!currentResults.length) return;
   const hasDist = currentResults[0]._dist !== undefined;
   const hasSubjectDist = currentResults.some(r => r._distSubject !== undefined);
-  const headers = ['Property','Address','City','State','Zip','Miles','MilesToSubject','LocationType','Lat','Lon','Units','Endorsed','MortgageAmount','FinancingType','SOACode','FHANumber','Holder'];
+  const headers = ['Property','Address','City','County','State','Zip','Miles','MilesToSubject','LocationType','Lat','Lon','Units','Endorsed','MortgageAmount','FinancingType','SOACode','Subsidized','Section8','UseRestriction','TaxCredit','TaxExemptBond','FHANumber','Holder'];
   const lines = [headers.join(',')];
   for(const r of currentResults){
     const pt = pointFor(r);
+    const yn = v => v === true ? 'Y' : v === false ? 'N' : '';
     const row = [
-      r.n, r.a, r.c, r.s, r.z,
+      r.n, r.a, r.c, r.county ?? '', r.s, r.z,
       hasDist ? (r._dist !== undefined ? r._dist.toFixed(2) : '') : '',
       hasSubjectDist ? (r._distSubject !== undefined ? r._distSubject.toFixed(2) : '') : '',
       r._geo,
       pt ? pt[0] : '', pt ? pt[1] : '',
-      r.u ?? '', r.e ?? '', r.m ?? '', r.fl ?? '', r.so ?? '', r.f ?? '', r.h ?? ''
+      r.u ?? '', r.e ?? '', r.m ?? '', r.fl ?? '', r.so ?? '',
+      yn(r.sub), yn(r.sec8), yn(r.restr), yn(r.tc), yn(r.te),
+      r.f ?? '', r.h ?? ''
     ].map(v => `"${String(v).replace(/"/g,'""')}"`);
     lines.push(row.join(','));
   }
@@ -1635,7 +1826,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   radiusLayer.clearLayers();
   starLayer.clearLayers();
   clearDrawnArea();
-  stopDrawing();
+  disarmAllClickModes();
   document.getElementById('resultsBody').innerHTML = '<div class="empty-state"><strong>Enter an address and radius, or use the filters, to begin.</strong>Results will appear on the map and in a table here.</div>';
   map.setView([39.5,-98.35], 4);
 });
@@ -1646,6 +1837,18 @@ document.getElementById('clearBtn').addEventListener('click', () => {
 /* ============================================================
    SUBJECT PROPERTY (persistent reference marker)
    ============================================================ */
+function setSubjectFromPoint(point, label){
+  subjectPoint = point;
+  subjectLayer.clearLayers();
+  const m = L.marker([point.lat, point.lon], {icon: subjectIcon(), zIndexOffset: 1100}).addTo(subjectLayer);
+  m.bindPopup(`<div class="popup-title">★ Subject Property</div><div class="popup-meta">${escapeHtml(label)}</div>`, {autoPan: false});
+  document.getElementById('subjectInput').value = label;
+  document.getElementById('clearSubjectBtn').style.display = 'inline-block';
+  setStatus('Subject property set: ' + label);
+  map.setView([point.lat, point.lon], Math.max(map.getZoom(), 12));
+  recomputeDistancesFromSubject();
+  if(currentResults.length) buildTable();
+}
 document.getElementById('setSubjectBtn').addEventListener('click', async () => {
   const q = document.getElementById('subjectInput').value.trim();
   if(!q){ setStatus('Enter an address for the subject property.', true); return; }
@@ -1654,15 +1857,7 @@ document.getElementById('setSubjectBtn').addEventListener('click', async () => {
   setStatus('Locating subject property "' + q + '"…');
   try{
     const point = await geocodeQuery(q);
-    subjectPoint = point;
-    subjectLayer.clearLayers();
-    const m = L.marker([point.lat, point.lon], {icon: subjectIcon(), zIndexOffset: 1100}).addTo(subjectLayer);
-    m.bindPopup(`<div class="popup-title">★ Subject Property</div><div class="popup-meta">${escapeHtml(q)}</div>`, {autoPan: false});
-    document.getElementById('clearSubjectBtn').style.display = 'inline-block';
-    setStatus('Subject property set: ' + q);
-    map.setView([point.lat, point.lon], Math.max(map.getZoom(), 12));
-    recomputeDistancesFromSubject();
-    if(currentResults.length) buildTable();
+    setSubjectFromPoint(point, q);
   } catch(err){
     setStatus(err.message || 'Could not locate that address.', true);
   } finally {
@@ -1679,23 +1874,18 @@ document.getElementById('clearSubjectBtn').addEventListener('click', () => {
   if(currentResults.length) buildTable();
 });
 
-document.getElementById('searchBtn').addEventListener('click', async () => {
-  const q = document.getElementById('addrInput').value.trim();
+async function runRadiusSearchFromPoint(point, label){
   const radius = parseFloat(document.getElementById('radiusInput').value);
-  if(!q){ setStatus('Enter an address, city, or zip code.', true); return; }
   if(!radius || radius <= 0){ setStatus('Enter a valid radius in miles.', true); return; }
   if(activeBusinessTypes().size === 0){ setStatus('Check at least one property type.', true); return; }
   if(activeFinancingGroups().size === 0){ setStatus('Check at least one financing type.', true); return; }
 
   const btn = document.getElementById('searchBtn');
   btn.disabled = true;
-  setStatus('Locating "' + q + '"…');
   boundaryLayer.clearLayers();
   clearDrawnArea();
 
   try{
-    const point = await geocodeQuery(q);
-
     // Stage 1: fast candidate filter using zip centroids, with a buffer
     // (zip centroids can be a few miles off from the true street address,
     // so we cast a wider net here and narrow it after street-level geocoding)
@@ -1707,14 +1897,15 @@ document.getElementById('searchBtn').addEventListener('click', async () => {
       .filter(p => p.la != null && p.lo != null)
       .filter(p => passesTypeFilter(p, types))
       .filter(p => passesFinancingFilter(p, finGroups))
+      .filter(p => passesTriStateFilters(p))
       .map(p => applyOverride({...p, _dist: haversineMiles(point.lat, point.lon, p.la, p.lo)}))
       .filter(p => p._dist <= radius + buffer)
       .sort((a,b) => a._dist - b._dist);
 
     currentResults = candidates;
-    searchContext = {isRadius:true, point, radius, query:q};
+    searchContext = {isRadius:true, point, radius, query:label};
     recomputeDistancesFromSubject();
-    renderAll(`${candidates.length.toLocaleString()} candidates within ~${radius} mi of "${q}" (zip-level, before street geocoding)`);
+    renderAll(`${candidates.length.toLocaleString()} candidates within ~${radius} mi of "${label}" (zip-level, before street geocoding)`);
 
     if(candidates.length === 0){
       setStatus('No properties found. Try a larger radius.');
@@ -1745,13 +1936,36 @@ document.getElementById('searchBtn').addEventListener('click', async () => {
     recomputePolygonMembershipIfDrawn();
     recomputeDistancesFromSubject();
     const exactCount = currentResults.filter(r=>r._geo==='exact').length;
-    renderAll(`${currentResults.length.toLocaleString()} properties within ${radius} mi of "${q}"`);
+    renderAll(`${currentResults.length.toLocaleString()} properties within ${radius} mi of "${label}"`);
     let msg = `Found ${currentResults.length.toLocaleString()} properties, ${exactCount} at exact street level.`;
     if(truncated) msg += ` (Only the nearest ${MAX_GEOCODE} candidates were street-geocoded — narrow the radius for full precision.)`;
     setStatus(msg);
   } catch(err){
     setStatus(err.message || 'Something went wrong.', true);
   } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('searchBtn').addEventListener('click', async () => {
+  const q = document.getElementById('addrInput').value.trim();
+  const radius = parseFloat(document.getElementById('radiusInput').value);
+  if(!q){ setStatus('Enter an address, city, or zip code.', true); return; }
+  if(!radius || radius <= 0){ setStatus('Enter a valid radius in miles.', true); return; }
+  if(activeBusinessTypes().size === 0){ setStatus('Check at least one property type.', true); return; }
+  if(activeFinancingGroups().size === 0){ setStatus('Check at least one financing type.', true); return; }
+
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true;
+  setStatus('Locating "' + q + '"…');
+  boundaryLayer.clearLayers();
+  clearDrawnArea();
+
+  try{
+    const point = await geocodeQuery(q);
+    await runRadiusSearchFromPoint(point, q);
+  } catch(err){
+    setStatus(err.message || 'Could not locate that address.', true);
     btn.disabled = false;
   }
 });
@@ -1768,6 +1982,8 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
   const cityRaw = document.getElementById('cityFilter').value.trim();
   const city = cityRaw.toLowerCase();
   const zip = document.getElementById('zipFilter').value.trim();
+  const countyRaw = document.getElementById('countyFilter').value.trim();
+  const county = countyRaw.toLowerCase();
   const types = activeBusinessTypes();
   const finGroups = activeFinancingGroups();
 
@@ -1779,17 +1995,19 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
     setStatus('Check at least one financing type.', true);
     return;
   }
-  if(!state && !city && !zip){
-    setStatus('Choose at least one filter (state, city, or zip).', true);
+  if(!state && !city && !zip && !county){
+    setStatus('Choose at least one filter (state, city, zip, or county).', true);
     return;
   }
 
   const results = PROPS.filter(p => {
     if(!passesTypeFilter(p, types)) return false;
     if(!passesFinancingFilter(p, finGroups)) return false;
+    if(!passesTriStateFilters(p)) return false;
     if(state && p.s !== state) return false;
     if(city && !p.c.toLowerCase().includes(city)) return false;
     if(zip && p.z !== zip.padStart(5,'0')) return false;
+    if(county && !(p.county || '').toLowerCase().includes(county)) return false;
     return true;
   });
 
@@ -1801,6 +2019,7 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
 
   const parts = [];
   if(city) parts.push(`city contains "${city}"`);
+  if(county) parts.push(`county contains "${county}"`);
   if(state) parts.push(`state = ${state}`);
   if(zip) parts.push(`zip = ${zip}`);
   renderAll(`${results.length.toLocaleString()} properties — ${parts.join(', ')}`);
@@ -1812,6 +2031,8 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
   }
 
   // Outline the most specific thing searched for: zip > city (+state) > state alone.
+  // (County doesn't have a TIGERweb boundary lookup wired up, since it's
+  // derived from zip codes rather than an authoritative county polygon source.)
   const zip5 = zip ? zip.padStart(5,'0') : '';
   let drew = false;
   if(zip5) drew = await drawBoundary('zip', zip5);

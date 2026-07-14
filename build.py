@@ -1,16 +1,24 @@
 """
-Rebuilds index.html from the two live HUD spreadsheets.
+Rebuilds index.html from three live HUD spreadsheets.
 
 Run with: python build.py
 Requires: pandas, openpyxl, zipcodes, requests
 
 This script:
- 1. Downloads the two HUD spreadsheets fresh from their stable URLs
- 2. Cross-references them by FHA project number (confirms each property
-    is an active, confirmed multifamily project)
- 3. Attaches a zip-code centroid lat/lon to each property (offline lookup)
- 4. Classifies each property's business type and financing bucket
+ 1. Downloads three HUD spreadsheets fresh from their stable URLs
+ 2. Cross-references them by FHA project number / property ID (confirms
+    each property is an active, confirmed multifamily project)
+ 3. Attaches a zip-code centroid lat/lon/county to each property (offline lookup)
+ 4. Classifies each property's business type, financing bucket, and pulls
+    subsidy/Section 8/use-restriction/tax-credit/tax-exempt-bond flags
  5. Injects the resulting data into template.html to produce index.html
+
+Note on the third file: its own data.gov catalog listing shows "last
+updated 2020," but the file's actual content includes dates well past
+that (e.g. 2023 occupancy dates), so the catalog metadata appears to
+just be stale rather than the underlying file being frozen. Worth an
+occasional manual sanity-check if the subsidy/tax-credit numbers ever
+look suspiciously unchanged month over month.
 """
 import pandas as pd
 import zipcodes
@@ -18,8 +26,9 @@ import json
 import re
 import requests
 
-ACTIVE_MORTGAGES_URL = "https://www.hud.gov/sites/default/files/Housing/documents/FHA-BF90-RM-A.xlsx"
 PROPERTY_ADDRESSES_URL = "https://www.hud.gov/sites/dfiles/Housing/documents/InsuredActiveMultifamilyFHAPropertyAddresses.xlsx"
+ACTIVE_MORTGAGES_URL = "https://www.hud.gov/sites/default/files/Housing/documents/FHA-BF90-RM-A.xlsx"
+PORTFOLIO_DATA_URL = "https://www.hud.gov/sites/dfiles/Housing/documents/activeportfoliopropdata.xlsx"
 
 def download(url, dest):
     print(f"Downloading {url} ...")
@@ -31,9 +40,44 @@ def download(url, dest):
 
 download(PROPERTY_ADDRESSES_URL, "property_addresses.xlsx")
 download(ACTIVE_MORTGAGES_URL, "active_mortgages.xlsx")
+download(PORTFOLIO_DATA_URL, "portfolio_data.xlsx")
+
+# --- Pull the "as of" freshness date HUD publishes on each source page ---
+# (these are the dates HUD itself lists, not a technical file-modified
+# timestamp — falls back gracefully to "unknown" if the page format
+# ever changes and the regex stops matching).
+def extract_hud_date(html, filename_hint):
+    idx = html.find(filename_hint)
+    if idx == -1:
+        return None
+    window = html[idx: idx + 400]
+    m = re.search(r'as of\s+(\d{1,2}/\d{1,2}/\d{4})', window, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    m = re.search(r'Current as of\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})', window, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    return None
+
+def fetch_hud_date(page_url, filename_hint):
+    try:
+        resp = requests.get(page_url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+        return extract_hud_date(resp.text, filename_hint)
+    except Exception as e:
+        print(f"Could not fetch HUD date from {page_url}: {e}")
+        return None
+
+from datetime import datetime, timezone
+mortgage_date = fetch_hud_date("https://www.hud.gov/hud-partners/multifamily-fhasl-active", "FHA-BF90-RM-A.xlsx")
+addresses_date = fetch_hud_date("https://www.hud.gov/hud-partners/multifamily-preservation", "InsuredActiveMultifamilyFHAPropertyAddresses.xlsx")
+portfolio_date = fetch_hud_date("https://www.hud.gov/hud-partners/multifamily-preservation", "activeportfoliopropdata.xlsx")
+build_date = datetime.now(timezone.utc).strftime("%B %d, %Y")
+print("HUD dates found -> mortgage:", mortgage_date, "| addresses:", addresses_date, "| portfolio:", portfolio_date)
 
 f1 = "property_addresses.xlsx"
 f2 = "active_mortgages.xlsx"
+f3 = "portfolio_data.xlsx"
 
 df1 = pd.read_excel(f1, sheet_name="Sheet1")
 df2 = pd.read_excel(f2, sheet_name="sheet1", header=1)
@@ -44,8 +88,17 @@ df2['proj_num'] = df2['HUD PROJECT NUMBER'].astype(str).str.strip().str.zfill(8)
 # Only keep df2 columns we need for enrichment (avoid dup city/state/zip - use df1's address data as primary)
 df2_small = df2[['proj_num','UNITS','INITIAL ENDORSEMENT DATE','FINAL ENDORSEMENT DATE',
                   'ORIGINAL MORTGAGE AMOUNT','HOLDER NAME','HOLDER CITY','HOLDER STATE',
-                  'SECTION OF ACT CODE','SOA CATEGORY/SUB CATEGORY','BUSINESS_TYPE']].copy()
+                  'SECTION OF ACT CODE','SOA CATEGORY/SUB CATEGORY','BUSINESS_TYPE',
+                  'TC','TE']].copy()
 BT_CODE = {'MF Residential':'R', 'MF Healthcare':'H', 'MF Hospitals':'P'}
+
+# --- Third data source: Active Portfolio Property Data (subsidy/restriction flags) ---
+sheet1 = pd.read_excel(f3, sheet_name='Step_01_Property_Level_data')
+sheet2 = pd.read_excel(f3, sheet_name='All active Properties with FHA ')
+sheet2['fha_number'] = sheet2['fha_number'].astype(str).str.strip().str.zfill(8)
+portfolio = sheet1.merge(sheet2[['property_id','fha_number']], on='property_id', how='inner')
+portfolio = portfolio[portfolio['is_insured_ind'] == 'Y']
+portfolio = portfolio[['fha_number','is_subsidized_ind','is_sec8_ind','has_use_restriction_ind']].drop_duplicates(subset='fha_number')
 
 # --- Financing-type bucket scheme (residential properties only) ---
 BUCKET_OF = {}
@@ -99,12 +152,17 @@ for c, lbl in OTHER_LABELS.items():
 df2_small = df2_small.drop_duplicates(subset='proj_num')
 
 merged = df1.merge(df2_small, left_on='fha_number', right_on='proj_num', how='inner')
+merged = merged.merge(portfolio, on='fha_number', how='left')
 print("Merged rows (confirmed active MF projects):", len(merged))
+print("Rows with portfolio subsidy/restriction data matched:", merged['is_subsidized_ind'].notna().sum())
 
-# build zip -> lat/lon lookup
+# build zip -> (lat, lon, county) lookup
 zip_lookup = {}
 for z in zipcodes.list_all():
-    zip_lookup[z['zip_code']] = (float(z['lat']), float(z['long'])) if z['lat'] and z['long'] else (None, None)
+    lat = float(z['lat']) if z['lat'] else None
+    lon = float(z['long']) if z['long'] else None
+    county = z['county'] if z['county'] else None
+    zip_lookup[z['zip_code']] = (lat, lon, county)
 
 def clean_zip(z):
     s = str(z).strip()
@@ -115,7 +173,7 @@ records = []
 no_geo = 0
 for _, row in merged.iterrows():
     zip5 = clean_zip(row['zip_code'])
-    lat, lon = zip_lookup.get(zip5, (None, None))
+    lat, lon, county = zip_lookup.get(zip5, (None, None, None))
     if lat is None:
         no_geo += 1
     addr2 = str(row['address_line2_text']).strip() if pd.notna(row['address_line2_text']) else ''
@@ -137,12 +195,19 @@ for _, row in merged.iterrows():
     units = row['UNITS']
     units = int(units) if pd.notna(units) else None
 
+    def yn(val):
+        # Portfolio flags: 'Y'/'N'/NaN (no match) -> True/False/None
+        if pd.isna(val):
+            return None
+        return str(val).strip().upper() == 'Y'
+
     rec = {
         "n": str(row['property_name_text']).strip(),
         "a": full_addr,
         "c": str(row['city_name_text']).strip(),
         "s": str(row['state_code']).strip(),
         "z": zip5,
+        "county": county or '',
         "f": row['fha_number'],
         "u": units,
         "e": endorse_str,
@@ -152,6 +217,11 @@ for _, row in merged.iterrows():
         "la": round(lat, 4) if lat is not None else None,
         "lo": round(lon, 4) if lon is not None else None,
         "bt": BT_CODE.get(str(row['BUSINESS_TYPE']).strip(), 'R') if pd.notna(row['BUSINESS_TYPE']) else 'R',
+        "sub": yn(row.get('is_subsidized_ind')),
+        "sec8": yn(row.get('is_sec8_ind')),
+        "restr": yn(row.get('has_use_restriction_ind')),
+        "tc": bool(pd.notna(row.get('TC'))),
+        "te": bool(pd.notna(row.get('TE'))),
     }
     if rec['bt'] == 'R':
         so_key = rec['so']
@@ -167,12 +237,21 @@ print("Records without geocoding (bad/missing zip):", no_geo, "of", len(records)
 data_json = json.dumps(records)
 print("Records:", len(records), "| Embedded data size (MB):", round(len(data_json)/1024/1024, 2))
 
+metadata = {
+    "mortgageDate": mortgage_date or "unknown",
+    "addressesDate": addresses_date or "unknown",
+    "portfolioDate": portfolio_date or "unknown",
+    "buildDate": build_date,
+}
+metadata_json = json.dumps(metadata)
+
 # Inject into the HTML template to produce the final, deployable index.html
 with open("template.html", "r", encoding="utf-8") as f:
     html = f.read()
 
 safe_json = data_json.replace("</script>", "<\\/script>")
 html = html.replace("__DATA_PLACEHOLDER__", safe_json)
+html = html.replace("__METADATA_PLACEHOLDER__", metadata_json.replace("</script>", "<\\/script>"))
 
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html)
