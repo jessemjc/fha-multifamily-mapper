@@ -121,15 +121,15 @@
 
   #clearBtn{
     width:100%;
-    background:none;
-    border:1px solid var(--line);
-    color:var(--ink-soft);
-    padding:7px;
-    font-size:12px;
+    background:#fbe9e7;
+    border:1px solid var(--brick);
+    color:var(--brick);
+    padding:9px;
+    font-size:12.5px;
+    font-weight:600;
     border-radius:3px;
-    margin-top:6px;
   }
-  #clearBtn:hover{border-color:var(--ink-soft); color:var(--ink);}
+  #clearBtn:hover{background:var(--brick); color:#fff;}
 
   #status{
     font-family:var(--mono);
@@ -353,6 +353,10 @@
 
       <div class="divider"></div>
 
+      <button id="clearBtn">Clear all / show none</button>
+
+      <div class="divider"></div>
+
       <h2>Search by address + radius</h2>
       <div class="field">
         <label for="addrInput">Address, city, or zip code</label>
@@ -384,7 +388,6 @@
         <input type="text" id="cityFilter" placeholder="e.g. Dallas">
       </div>
       <button id="filterBtn" class="secondaryBtn">Apply filters</button>
-      <button id="clearBtn">Clear all / show none</button>
 
       <div class="divider"></div>
 
@@ -457,7 +460,7 @@
         <span class="badge badge-exact">exact</span> = geocoded to the real street address, on demand, only for properties in your current results. Tries the U.S. Census geocoder first (two different parsers), then OpenStreetMap as a last resort — different address databases catch different addresses.<br>
         <span class="badge badge-approx">approx</span> = none of those could match the address; falling back to the ZIP code centroid.<br>
         <span class="badge badge-manual">manual</span> = you corrected this pin by hand.<br><br>
-        ★ = the address/location you searched for. A dashed gold circle shows the search radius; a dashed green outline shows the exact city/state/zip boundary when using the direct filters (via U.S. Census TIGERweb — may not draw if that service is briefly unavailable).<br><br>
+        ★ = the address/location you searched for. The search radius, the drawn area, and the city/state/zip boundary (via U.S. Census TIGERweb — may not draw if that service is briefly unavailable) all show the same way: a solid green outline.<br><br>
         Every pin always shows its own property number. If two properties sit right on top of each other on screen (e.g. sharing a zip centroid), they're nudged apart slightly with a thin line back to the true spot. Click any table row to jump the map straight to that property and open its details.
       </p>
     </div>
@@ -657,6 +660,7 @@ function finishDrawing(){
 
   currentResults = results.map(r => applyOverride({...r}));
   searchContext = {isRadius: false, isDrawn: true, polygon: polygonPoints};
+  recomputeDistancesFromSubject();
   radiusLayer.clearLayers();
   boundaryLayer.clearLayers();
 
@@ -1031,7 +1035,7 @@ async function drawBoundary(kind, value, value2){
   else if(kind === 'state') gj = await fetchStateBoundary(value);
   if(!gj) return false;
   const layer = L.geoJSON(gj, {
-    style: { color: '#0d5c46', weight: 2.5, fillColor: '#0d5c46', fillOpacity: 0.06, dashArray: '6,4' }
+    style: { color: '#0d5c46', weight: 2.5, fillColor: '#0d5c46', fillOpacity: 0.08 }
   }).addTo(boundaryLayer);
   const b = layer.getBounds();
   if(b.isValid()) map.fitBounds(b, {padding:[30,30]});
@@ -1210,6 +1214,7 @@ map.on('click', (e) => {
   }
   recomputeDistancesIfRadius();
   recomputePolygonMembershipIfDrawn();
+  recomputeDistancesFromSubject();
   if(touched) renderAll(document.getElementById('resultsTitle').textContent);
   setStatus(`Location set for FHA #${fhaNum}. Use "Export corrections" to save this so it isn't lost when you reopen the file.`);
 });
@@ -1226,12 +1231,22 @@ function recomputeDistancesIfRadius(){
   currentResults.sort((a,b) => (a._dist ?? 1e9) - (b._dist ?? 1e9));
 }
 
+let subjectPoint = null; // {lat, lon} of the Subject Property, or null if not set
+function recomputeDistancesFromSubject(){
+  for(const r of currentResults){
+    if(!subjectPoint){ delete r._distSubject; continue; }
+    const pt = pointFor(r);
+    if(pt) r._distSubject = haversineMiles(subjectPoint.lat, subjectPoint.lon, pt[0], pt[1]);
+  }
+}
+
 function assignNumbers(){
   currentResults.forEach((r,i) => { r._num = i+1; });
 }
 
 function bindPropertyPopup(marker, r){
   const dist = r._dist !== undefined ? `${r._dist.toFixed(1)} mi away<br>` : '';
+  const subjectDist = r._distSubject !== undefined ? `${r._distSubject.toFixed(1)} mi from subject property<br>` : '';
   const srcLabel = r._geoSrc === 'census' ? ' (Census)' : r._geoSrc === 'census-alt' ? ' (Census, alt parser)'
     : r._geoSrc === 'osm' ? ' (OpenStreetMap)' : r._geoSrc === 'census-hwy' ? ' (Census, highway variant)'
     : r._geoSrc === 'osm-hwy' ? ' (OpenStreetMap, highway variant)' : '';
@@ -1242,7 +1257,7 @@ function bindPropertyPopup(marker, r){
   marker.bindPopup(
     `<div class="popup-title">#${r._num} — ${escapeHtml(r.n)}</div>` +
     `<div class="popup-meta">${escapeHtml(r.a)}, ${escapeHtml(r.c)}, ${r.s} ${r.z}<br>` +
-    `${dist}FHA #${r.f} · ${r.u ?? '—'} units<br>` +
+    `${dist}${subjectDist}FHA #${r.f} · ${r.u ?? '—'} units<br>` +
     `Financing type: ${escapeHtml(r.fl) || '—'}<br>` +
     `Endorsed: ${r.e || '—'} · ${fmtMoney(r.m)}<br>` +
     `Holder: ${escapeHtml(r.h) || '—'}<br>` +
@@ -1358,7 +1373,7 @@ function renderMap(){
     sm.bindPopup(`<div class="popup-title">★ Search location</div><div class="popup-meta">${escapeHtml(searchContext.query)}</div>`, {autoPan: false});
     L.circle([searchContext.point.lat, searchContext.point.lon], {
       radius: searchContext.radius * 1609.34, // miles -> meters
-      color: '#c9962b', weight: 2, fillColor: '#c9962b', fillOpacity: 0.04, dashArray: '4,6'
+      color: '#0d5c46', weight: 2.5, fillColor: '#0d5c46', fillOpacity: 0.08
     }).addTo(radiusLayer);
   }
   for(const r of currentResults){
@@ -1397,6 +1412,7 @@ function buildTable(){
     {key:'s', label:'State'},
     {key:'z', label:'Zip'},
     {key:'_dist', label:'Miles'},
+    {key:'_distSubject', label:'Mi. to Subject'},
     {key:'_geo', label:'Location'},
     {key:'u', label:'Units'},
     {key:'e', label:'Endorsed'},
@@ -1405,7 +1421,12 @@ function buildTable(){
     {key:'f', label:'FHA #'},
   ];
   const hasDist = currentResults.length && currentResults[0]._dist !== undefined;
-  const visibleCols = hasDist ? cols : cols.filter(c=>c.key!=='_dist');
+  const hasSubjectDist = currentResults.length && currentResults.some(r => r._distSubject !== undefined);
+  const visibleCols = cols.filter(c => {
+    if(c.key === '_dist') return hasDist;
+    if(c.key === '_distSubject') return hasSubjectDist;
+    return true;
+  });
 
   let html = '<table><thead><tr>';
   for(const c of visibleCols) html += `<th data-col="${c.key}">${c.label}</th>`;
@@ -1413,10 +1434,10 @@ function buildTable(){
   for(const r of currentResults){
     html += `<tr data-fha="${escapeHtml(r.f)}">`;
     for(const c of visibleCols){
-      const isNum = c.key==='u' || c.key==='m' || c.key==='_dist' || c.key==='_num';
+      const isNum = c.key==='u' || c.key==='m' || c.key==='_dist' || c.key==='_distSubject' || c.key==='_num';
       let val = r[c.key];
       if(c.key==='m') val = fmtMoney(val);
-      else if(c.key==='_dist') val = val!==undefined ? val.toFixed(1) : '—';
+      else if(c.key==='_dist' || c.key==='_distSubject') val = val!==undefined ? val.toFixed(1) : '—';
       else if(c.key==='_geo'){
         const cls = val==='exact' ? 'badge-exact' : val==='manual' ? 'badge-manual' : val==='pending' ? 'badge-pending' : val==='approx' ? 'badge-approx' : 'badge-pending';
         const txt = val==='exact' ? 'exact' : val==='manual' ? 'manual' : val==='pending' ? 'locating…' : val==='approx' ? 'approx' : 'not located';
@@ -1479,7 +1500,7 @@ function renderAll(titleText){
       sm.bindPopup(`<div class="popup-title">★ Search location</div><div class="popup-meta">${escapeHtml(searchContext.query)}</div>`, {autoPan: false});
       L.circle([searchContext.point.lat, searchContext.point.lon], {
         radius: searchContext.radius * 1609.34,
-        color: '#c9962b', weight: 2, fillColor: '#c9962b', fillOpacity: 0.04, dashArray: '4,6'
+        color: '#0d5c46', weight: 2.5, fillColor: '#0d5c46', fillOpacity: 0.08
       }).addTo(radiusLayer);
       map.setView([searchContext.point.lat, searchContext.point.lon], 11);
     }
@@ -1511,11 +1532,13 @@ document.getElementById('geocodeBtn').addEventListener('click', async () => {
     if(done % 10 === 0 || done === total){
       recomputeDistancesIfRadius();
       recomputePolygonMembershipIfDrawn();
+      recomputeDistancesFromSubject();
       renderAll(document.getElementById('resultsTitle').textContent);
     }
   });
   recomputeDistancesIfRadius();
   recomputePolygonMembershipIfDrawn();
+  recomputeDistancesFromSubject();
   renderAll(document.getElementById('resultsTitle').textContent);
 
   const exactCount = currentResults.filter(r=>r._geo==='exact').length;
@@ -1531,13 +1554,15 @@ document.getElementById('geocodeBtn').addEventListener('click', async () => {
 function exportCSV(){
   if(!currentResults.length) return;
   const hasDist = currentResults[0]._dist !== undefined;
-  const headers = ['Property','Address','City','State','Zip','Miles','LocationType','Lat','Lon','Units','Endorsed','MortgageAmount','FinancingType','SOACode','FHANumber','Holder'];
+  const hasSubjectDist = currentResults.some(r => r._distSubject !== undefined);
+  const headers = ['Property','Address','City','State','Zip','Miles','MilesToSubject','LocationType','Lat','Lon','Units','Endorsed','MortgageAmount','FinancingType','SOACode','FHANumber','Holder'];
   const lines = [headers.join(',')];
   for(const r of currentResults){
     const pt = pointFor(r);
     const row = [
       r.n, r.a, r.c, r.s, r.z,
       hasDist ? (r._dist !== undefined ? r._dist.toFixed(2) : '') : '',
+      hasSubjectDist ? (r._distSubject !== undefined ? r._distSubject.toFixed(2) : '') : '',
       r._geo,
       pt ? pt[0] : '', pt ? pt[1] : '',
       r.u ?? '', r.e ?? '', r.m ?? '', r.fl ?? '', r.so ?? '', r.f ?? '', r.h ?? ''
@@ -1585,6 +1610,7 @@ document.getElementById('importOverridesInput').addEventListener('change', (e) =
       for(const r of currentResults) applyOverride(r);
       recomputeDistancesIfRadius();
       recomputePolygonMembershipIfDrawn();
+      recomputeDistancesFromSubject();
       if(currentResults.length) renderAll(document.getElementById('resultsTitle').textContent);
       setStatus(`Imported ${count} location correction(s).`);
     } catch(err){
@@ -1628,12 +1654,15 @@ document.getElementById('setSubjectBtn').addEventListener('click', async () => {
   setStatus('Locating subject property "' + q + '"…');
   try{
     const point = await geocodeQuery(q);
+    subjectPoint = point;
     subjectLayer.clearLayers();
     const m = L.marker([point.lat, point.lon], {icon: subjectIcon(), zIndexOffset: 1100}).addTo(subjectLayer);
     m.bindPopup(`<div class="popup-title">★ Subject Property</div><div class="popup-meta">${escapeHtml(q)}</div>`, {autoPan: false});
     document.getElementById('clearSubjectBtn').style.display = 'inline-block';
     setStatus('Subject property set: ' + q);
     map.setView([point.lat, point.lon], Math.max(map.getZoom(), 12));
+    recomputeDistancesFromSubject();
+    if(currentResults.length) buildTable();
   } catch(err){
     setStatus(err.message || 'Could not locate that address.', true);
   } finally {
@@ -1641,10 +1670,13 @@ document.getElementById('setSubjectBtn').addEventListener('click', async () => {
   }
 });
 document.getElementById('clearSubjectBtn').addEventListener('click', () => {
+  subjectPoint = null;
   subjectLayer.clearLayers();
   document.getElementById('subjectInput').value = '';
   document.getElementById('clearSubjectBtn').style.display = 'none';
   setStatus('Subject property cleared.');
+  recomputeDistancesFromSubject();
+  if(currentResults.length) buildTable();
 });
 
 document.getElementById('searchBtn').addEventListener('click', async () => {
@@ -1681,6 +1713,7 @@ document.getElementById('searchBtn').addEventListener('click', async () => {
 
     currentResults = candidates;
     searchContext = {isRadius:true, point, radius, query:q};
+    recomputeDistancesFromSubject();
     renderAll(`${candidates.length.toLocaleString()} candidates within ~${radius} mi of "${q}" (zip-level, before street geocoding)`);
 
     if(candidates.length === 0){
@@ -1703,12 +1736,14 @@ document.getElementById('searchBtn').addEventListener('click', async () => {
       if(done % 10 === 0 || done === total){
         recomputeDistancesIfRadius();
         recomputePolygonMembershipIfDrawn();
+        recomputeDistancesFromSubject();
         renderAll(document.getElementById('resultsTitle').textContent);
       }
     });
 
     recomputeDistancesIfRadius();
     recomputePolygonMembershipIfDrawn();
+    recomputeDistancesFromSubject();
     const exactCount = currentResults.filter(r=>r._geo==='exact').length;
     renderAll(`${currentResults.length.toLocaleString()} properties within ${radius} mi of "${q}"`);
     let msg = `Found ${currentResults.length.toLocaleString()} properties, ${exactCount} at exact street level.`;
@@ -1760,6 +1795,7 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
 
   currentResults = results.map(r => applyOverride({...r}));
   searchContext = {isRadius:false};
+  recomputeDistancesFromSubject();
   radiusLayer.clearLayers();
   clearDrawnArea();
 
