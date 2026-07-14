@@ -549,7 +549,7 @@
         <span class="badge badge-manual">manual</span> = you corrected this pin by hand.<br><br>
         ★ = the address/location you searched for. The search radius, the drawn area, and the city/state/zip/county boundary (via U.S. Census TIGERweb — may not draw if that service is briefly unavailable) all show the same way: a solid green outline.<br><br>
         Every pin always shows its own property number. If two properties sit right on top of each other on screen (e.g. sharing a zip centroid), they're nudged apart slightly with a thin line back to the true spot. Click any table row to jump the map straight to that property and open its details.<br><br>
-        County names are derived from each property's ZIP code (not HUD's own county field, which has gaps), so county search is complete and consistently spelled for every property.
+        County names are derived from each property's ZIP code (not HUD's own county field, which has gaps), so county search is complete and consistently spelled for every property. Searching by county also draws its boundary outline, same as state/city/zip.
       </p>
 
       <div class="divider"></div>
@@ -1219,11 +1219,32 @@ async function fetchCityBoundary(cityName, stateAbbrev){
   }
   return null;
 }
+async function fetchCountyBoundary(countyName, stateAbbrev){
+  // Our own county values (e.g. "Tarrant County", "Orleans Parish") include
+  // a suffix TIGERweb's bare NAME field doesn't — strip it before querying.
+  const nameStripped = countyName.replace(/\s+(county|parish|borough|census area|municipality)\s*$/i, '').trim();
+  const nameEscaped = nameStripped.replace(/'/g, "''");
+  const fips = stateAbbrev ? STATE_FIPS[stateAbbrev] : null;
+  const stateClause = fips ? ` AND STATE='${fips}'` : '';
+  const base = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer/1/query';
+
+  const whereClauses = [
+    `UPPER(NAME)=UPPER('${nameEscaped}')${stateClause}`,
+    `UPPER(NAME) LIKE UPPER('%${nameEscaped}%')${stateClause}`
+  ];
+  for(const where of whereClauses){
+    const qs = `?where=${encodeURIComponent(where)}&outFields=NAME&returnGeometry=true&maxAllowableOffset=0.005&f=geojson`;
+    const gj = await fetchTigerGeoJSON(base + qs);
+    if(gj) return gj;
+  }
+  return null;
+}
 async function drawBoundary(kind, value, value2){
   boundaryLayer.clearLayers();
   let gj = null;
   if(kind === 'zip') gj = await fetchZipBoundary(value);
   else if(kind === 'city') gj = await fetchCityBoundary(value, value2);
+  else if(kind === 'county') gj = await fetchCountyBoundary(value, value2);
   else if(kind === 'state') gj = await fetchStateBoundary(value);
   if(!gj) return false;
   const layer = L.geoJSON(gj, {
@@ -2030,15 +2051,14 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
     setStatus(`Found ${results.length.toLocaleString()} properties (zip-level pins shown). Click "Locate street addresses" for exact pins.`);
   }
 
-  // Outline the most specific thing searched for: zip > city (+state) > state alone.
-  // (County doesn't have a TIGERweb boundary lookup wired up, since it's
-  // derived from zip codes rather than an authoritative county polygon source.)
+  // Outline the most specific thing searched for: zip > county (+state) > city (+state) > state alone.
   const zip5 = zip ? zip.padStart(5,'0') : '';
   let drew = false;
   if(zip5) drew = await drawBoundary('zip', zip5);
+  else if(countyRaw) drew = await drawBoundary('county', countyRaw, state || undefined);
   else if(cityRaw) drew = await drawBoundary('city', cityRaw, state || undefined);
   else if(state) drew = await drawBoundary('state', state);
-  if((zip5 || cityRaw || state) && !drew){
+  if((zip5 || countyRaw || cityRaw || state) && !drew){
     setStatus(document.getElementById('status').textContent + ' (Could not draw a boundary outline for that area — Census boundary service may be unavailable.)');
   }
 });
