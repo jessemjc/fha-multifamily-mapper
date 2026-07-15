@@ -635,7 +635,8 @@ document.getElementById('sourcesInfo').innerHTML = `
   <strong style="color:var(--ink);">HUD FHA Multifamily Firm Commitments and Endorsements Database</strong><br>
   Powers the "Firm Commitment Deals" toggle — properties either recently insured but not yet in the main mortgages file above, or with an active Firm Commitment that hasn't closed yet. City-level location only (no street address available in this source).<br>
   HUD lists this data as of: ${BUILD_META.firmCommitmentsDate || 'unknown'}<br><br>
-  <strong style="color:var(--ink);">This site last refreshed with new HUD data:</strong> ${BUILD_META.buildDate || 'unknown'}
+  <strong style="color:var(--ink);">This site last refreshed with new HUD data:</strong> ${BUILD_META.buildDate || 'unknown'}<br><br>
+  <em>This tool is built independently from publicly available HUD data and is not affiliated with, endorsed by, or officially associated with HUD or any federal agency. Data may be delayed, incomplete, or approximate (see notes above) — verify independently before relying on it for decisions.</em>
 `;
 
 // give every record a stable key + mutable geocode status, without touching source data
