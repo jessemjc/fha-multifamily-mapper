@@ -235,6 +235,7 @@
   .badge-exact{background:var(--accent-soft); color:var(--accent);}
   .badge-approx{background:#f3e4d6; color:var(--brick);}
   .badge-manual{background:#dce8f5; color:#2a5d8f;}
+  .badge-pipeline{background:#ece1f2; color:#7b4397;}
   .badge-pending{background:#eee; color:#888;}
   .empty-state{
     padding:40px 20px;
@@ -263,6 +264,7 @@
   .num-pin-exact{background:var(--accent);}
   .num-pin-approx{background:var(--brick);}
   .num-pin-manual{background:#2a5d8f;}
+  .num-pin-pending{background:#7b4397;}
 
 
   ::-webkit-scrollbar{width:10px;}
@@ -442,6 +444,27 @@
 
       <div class="divider"></div>
 
+      <h2>Firm Commitment Pipeline Deals</h2>
+      <div class="field" style="margin-bottom:4px;">
+        <label style="display:flex;align-items:center;gap:7px;font-weight:500;cursor:pointer;">
+          <input type="checkbox" id="includePendingToggle" style="width:auto;"> Include pipeline / not-yet-caught-up deals
+        </label>
+      </div>
+      <div class="field" style="margin-top:8px;">
+        <label for="pendingAgeSelect">Exclude Firm Commitments older than</label>
+        <select id="pendingAgeSelect">
+          <option value="0" selected>No limit (include all ages)</option>
+          <option value="3">3 months</option>
+          <option value="6">6 months</option>
+          <option value="12">12 months</option>
+          <option value="18">18 months</option>
+          <option value="24">24 months</option>
+        </select>
+      </div>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Off by default. Adds two kinds of purple pins: recently-insured properties HUD's main file hasn't caught up to yet, and Firm Commitments that <strong>haven't closed yet</strong> — these can still fall through. The age limit only applies to the latter (not-yet-closed commitments can go stale; recently-insured ones don't need an age check) and defaults to no limit — old, likely-dead commitments are included unless you choose to exclude them. Only city-level location is available for either (no street address exists yet), shown as a coarser, distinctly-colored pin.</p>
+
+      <div class="divider"></div>
+
       <h2>Property type</h2>
       <div class="dropdown" id="btDropdown">
         <button type="button" class="dropdown-btn" id="btDropdownBtn">
@@ -548,7 +571,8 @@
         Data: HUD Insured Multifamily Mortgages (active) cross-referenced with HUD's Insured Active Multifamily FHA Property Addresses file by FHA project number, plus HUD's Active Multifamily Portfolio data for subsidy/restriction/tax-credit flags.<br><br>
         <span class="badge badge-exact">exact</span> = geocoded to the real street address, on demand, only for properties in your current results. Tries the U.S. Census geocoder first (two different parsers), then OpenStreetMap as a last resort — different address databases catch different addresses.<br>
         <span class="badge badge-approx">approx</span> = none of those could match the address; falling back to the ZIP code centroid.<br>
-        <span class="badge badge-manual">manual</span> = you corrected this pin by hand.<br><br>
+        <span class="badge badge-manual">manual</span> = you corrected this pin by hand.<br>
+        <span class="badge badge-pipeline">pipeline</span> = a Firm Commitment or recently-insured deal not yet in the main HUD dataset — city-center location only (see "Firm Commitment Pipeline Deals" toggle above).<br><br>
         ★ = the address/location you searched for. The search radius, the drawn area, and the city/state/zip/county boundary (via U.S. Census TIGERweb — may not draw if that service is briefly unavailable) all show the same way: a solid green outline.<br><br>
         Every pin always shows its own property number. If two properties sit right on top of each other on screen (e.g. sharing a zip centroid), they're nudged apart slightly with a thin line back to the true spot. Click any table row to jump the map straight to that property and open its details.<br><br>
         County names are derived from each property's ZIP code (not HUD's own county field, which has gaps), so county search is complete and consistently spelled for every property. Searching by county also draws its boundary outline, same as state/city/zip.
@@ -609,13 +633,20 @@ document.getElementById('sourcesInfo').innerHTML = `
   <strong style="color:var(--ink);">HUD Active Multifamily Portfolio — Property Level Data</strong><br>
   Subsidized status, Section 8 assistance, and use-restriction flags.<br>
   HUD lists this data as of: ${BUILD_META.portfolioDate || 'unknown'}<br><br>
+  <strong style="color:var(--ink);">HUD FHA Multifamily Firm Commitments and Endorsements Database</strong><br>
+  Powers the "Firm Commitment Pipeline Deals" toggle — properties either recently insured but not yet in the main mortgages file above, or with an active Firm Commitment issued in the last 12 months that hasn't closed yet. City-level location only (no street address available in this source).<br>
+  HUD lists this data as of: ${BUILD_META.firmCommitmentsDate || 'unknown'}<br><br>
   <strong style="color:var(--ink);">This site last refreshed with new HUD data:</strong> ${BUILD_META.buildDate || 'unknown'}
 `;
 
 // give every record a stable key + mutable geocode status, without touching source data
 for (const p of PROPS) {
   p._key = p.f + '|' + p.a;   // fha number + address is unique enough
-  p._geo = 'none';            // 'none' | 'pending' | 'exact' | 'approx'
+  // Firm-commitment pipeline/catching-up records only ever have a city
+  // (or occasionally state) centroid — no street address exists to
+  // geocode toward, so they get their own permanent status instead of
+  // going through the normal none -> pending -> exact/approx flow.
+  p._geo = p.pending ? 'city' : 'none';   // 'none' | 'pending' | 'exact' | 'approx' | 'city'
 }
 const geocodeCache = new Map(); // _key -> {lat, lon, status}
 
@@ -775,6 +806,7 @@ function runDrawnAreaSearch(polygonPoints, drawShape){
     if(!passesTypeFilter(p, types)) return false;
     if(!passesFinancingFilter(p, finGroups)) return false;
     if(!passesTriStateFilters(p)) return false;
+    if(!passesPendingFilter(p)) return false;
     return pointInPolygon([p.la, p.lo], polygonPoints);
   });
 
@@ -889,7 +921,8 @@ const approxIcon = L.icon({
   iconSize:[25,41], iconAnchor:[12,41], popupAnchor:[1,-34], shadowSize:[41,41]
 });
 function numberedIcon(num, status){
-  const cls = status === 'exact' ? 'num-pin-exact' : status === 'manual' ? 'num-pin-manual' : 'num-pin-approx';
+  const cls = status === 'exact' ? 'num-pin-exact' : status === 'manual' ? 'num-pin-manual'
+    : status === 'city' ? 'num-pin-pending' : 'num-pin-approx';
   return L.divIcon({
     className: '',
     html: `<div class="num-pin ${cls}">${num}</div>`,
@@ -952,7 +985,7 @@ function activeFinancingGroups(){
   return set;
 }
 function passesFinancingFilter(p, groups){
-  if(p.bt !== 'R') return true; // bucket scheme only applies to residential; healthcare/hospitals controlled by Property type
+  if(p.bt !== 'R' || p.pending) return true; // bucket scheme only applies to closed residential deals; pending/pipeline deals and non-residential types are exempt, controlled by Property type / the pending toggle instead
   return groups.has(p.grp);
 }
 
@@ -980,6 +1013,26 @@ function passesTriStateFilters(p){
   }
   return true;
 }
+function passesPendingFilter(p){
+  if(!p.pending) return true; // normal properties are never affected by this toggle
+  if(!document.getElementById('includePendingToggle').checked) return false;
+  // Age limit only applies to not-yet-closed "pipeline" deals — a
+  // "catching_up" record is already insured, just not yet reflected in
+  // the main file, so there's no meaningful "how stale is this" question.
+  if(p.pending === 'pipeline'){
+    const maxMonths = parseInt(document.getElementById('pendingAgeSelect').value, 10);
+    if(maxMonths > 0 && p.e){
+      const activityDate = new Date(p.e);
+      if(!isNaN(activityDate.getTime())){
+        const ageDays = (Date.now() - activityDate.getTime()) / 86400000;
+        if(ageDays > maxMonths * 30) return false;
+      }
+    }
+  }
+  return true;
+}
+document.getElementById('includePendingToggle').addEventListener('change', () => showUpdateFiltersButtonIfSearched());
+document.getElementById('pendingAgeSelect').addEventListener('change', () => showUpdateFiltersButtonIfSearched());
 document.querySelectorAll('.tristate').forEach(group => {
   group.querySelectorAll('.tristate-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1380,7 +1433,7 @@ async function tryHighwayVariants(r){
 
 async function geocodeRows(rows, onProgress){
   let idx = 0, completed = 0;
-  const toDo = rows.filter(r => r._geo !== 'exact' && r._geo !== 'approx' && r._geo !== 'manual');
+  const toDo = rows.filter(r => r._geo !== 'exact' && r._geo !== 'approx' && r._geo !== 'manual' && r._geo !== 'city');
 
   async function worker(){
     while(idx < toDo.length){
@@ -1475,6 +1528,26 @@ function assignNumbers(){
 }
 
 function bindPropertyPopup(marker, r){
+  if(r.pending){
+    const statusLabel = r.pending === 'catching_up'
+      ? `Initially Endorsed ${r.e || ''} — insured, but not yet reflected in this month's main HUD dataset (should appear normally next update).`
+      : `Firm Commitment: ${escapeHtml(r.pendingStatus || 'Issued')} (${r.e || 'date unknown'}) — <strong>not yet insured</strong>. Commitments can still be withdrawn or expire before closing.`;
+    const flags = flagsSummary(r);
+    const flagsLine = flags ? `Flags: ${escapeHtml(flags)}<br>` : '';
+    marker.bindPopup(
+      `<div class="popup-title">#${r._num} — ${escapeHtml(r.n)}</div>` +
+      `<div class="popup-meta">${escapeHtml(r.c)}${r.county ? ', ' + escapeHtml(r.county) : ''}, ${r.s}<br>` +
+      `FHA #${r.f} · ${r.u ?? '—'} units<br>` +
+      `Program: ${escapeHtml(r.fl) || '—'}<br>` +
+      `${flagsLine}` +
+      `Lender: ${escapeHtml(r.h) || '—'} · ${fmtMoney(r.m)}<br>` +
+      `<em>${statusLabel}</em><br>` +
+      `<em style="color:var(--brick);">📍 Location is a city-center approximation — no street address exists yet for this deal.</em><br>` +
+      `<a href="#" onclick="armFix('${r.f}'); return false;" style="font-size:11.5px;">📍 Set a more precise location</a></div>`,
+      {autoPan: false}
+    );
+    return;
+  }
   const dist = r._dist !== undefined ? `${r._dist.toFixed(1)} mi away<br>` : '';
   const subjectDist = r._distSubject !== undefined ? `${r._distSubject.toFixed(1)} mi from subject property<br>` : '';
   const srcLabel = r._geoSrc === 'census' ? ' (Census)' : r._geoSrc === 'census-alt' ? ' (Census, alt parser)'
@@ -1624,7 +1697,9 @@ function renderMap(){
 // Debounce so it only happens once the view has actually settled.
 function debounce(fn, waitMs){
   let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), waitMs); };
+  const debounced = (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), waitMs); };
+  debounced.cancel = () => clearTimeout(t);
+  return debounced;
 }
 const debouncedRedraw = debounce(() => {
   if(currentResults.length) drawMarkers();
@@ -1683,8 +1758,8 @@ function buildTable(){
       if(c.key==='m') val = fmtMoney(val);
       else if(c.key==='_dist' || c.key==='_distSubject') val = val!==undefined ? val.toFixed(1) : '—';
       else if(c.key==='_geo'){
-        const cls = val==='exact' ? 'badge-exact' : val==='manual' ? 'badge-manual' : val==='pending' ? 'badge-pending' : val==='approx' ? 'badge-approx' : 'badge-pending';
-        const txt = val==='exact' ? 'exact' : val==='manual' ? 'manual' : val==='pending' ? 'locating…' : val==='approx' ? 'approx' : 'not located';
+        const cls = val==='exact' ? 'badge-exact' : val==='manual' ? 'badge-manual' : val==='city' ? 'badge-pipeline' : val==='pending' ? 'badge-pending' : val==='approx' ? 'badge-approx' : 'badge-pending';
+        const txt = val==='exact' ? 'exact' : val==='manual' ? 'manual' : val==='city' ? 'pipeline' : val==='pending' ? 'locating…' : val==='approx' ? 'approx' : 'not located';
         html += `<td><span class="badge ${cls}">${txt}</span></td>`;
         continue;
       }
@@ -1723,6 +1798,7 @@ function buildTable(){
       const pt = pointFor(r);
       if(!pt){ setStatus('This property has no map location yet.', true); return; }
       map.setView(pt, Math.max(map.getZoom(), 15), {animate:false});
+      debouncedRedraw.cancel(); // setView just queued a redraw of its own; ours below is the one that should stick
       drawMarkers(); // recompute nudge positions at the new zoom before opening
       const m = markerIndex.get(fha);
       if(m) m.openPopup();
@@ -1800,7 +1876,7 @@ function exportCSV(){
   if(!currentResults.length) return;
   const hasDist = currentResults[0]._dist !== undefined;
   const hasSubjectDist = currentResults.some(r => r._distSubject !== undefined);
-  const headers = ['Property','Address','City','County','State','Zip','Miles','MilesToSubject','LocationType','Lat','Lon','Units','Endorsed','MortgageAmount','FinancingType','SOACode','Subsidized','Section8','UseRestriction','TaxCredit','TaxExemptBond','FHANumber','Holder'];
+  const headers = ['Property','Address','City','County','State','Zip','Miles','MilesToSubject','LocationType','Lat','Lon','Units','Endorsed','MortgageAmount','FinancingType','SOACode','Subsidized','Section8','UseRestriction','TaxCredit','TaxExemptBond','PendingStatus','FHANumber','Holder'];
   const lines = [headers.join(',')];
   for(const r of currentResults){
     const pt = pointFor(r);
@@ -1813,6 +1889,7 @@ function exportCSV(){
       pt ? pt[0] : '', pt ? pt[1] : '',
       r.u ?? '', r.e ?? '', r.m ?? '', r.fl ?? '', r.so ?? '',
       yn(r.sub), yn(r.sec8), yn(r.restr), yn(r.tc), yn(r.te),
+      r.pendingStatus ?? '',
       r.f ?? '', r.h ?? ''
     ].map(v => `"${String(v).replace(/"/g,'""')}"`);
     lines.push(row.join(','));
@@ -1955,6 +2032,7 @@ async function runRadiusSearchFromPoint(point, label){
       .filter(p => passesTypeFilter(p, types))
       .filter(p => passesFinancingFilter(p, finGroups))
       .filter(p => passesTriStateFilters(p))
+      .filter(p => passesPendingFilter(p))
       .map(p => applyOverride({...p, _dist: haversineMiles(point.lat, point.lon, p.la, p.lo)}))
       .filter(p => p._dist <= radius + buffer)
       .sort((a,b) => a._dist - b._dist);
@@ -2061,6 +2139,7 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
     if(!passesTypeFilter(p, types)) return false;
     if(!passesFinancingFilter(p, finGroups)) return false;
     if(!passesTriStateFilters(p)) return false;
+    if(!passesPendingFilter(p)) return false;
     if(state && p.s !== state) return false;
     if(city && !p.c.toLowerCase().includes(city)) return false;
     if(zip && p.z !== zip.padStart(5,'0')) return false;
