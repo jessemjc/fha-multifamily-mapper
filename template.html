@@ -263,7 +263,7 @@
   }
   .num-pin-exact{background:var(--accent);}
   .num-pin-approx{background:var(--brick);}
-  .num-pin-manual{background:#2a5d8f;}
+  .num-pin-manual{background:var(--accent);}
   .num-pin-pending{background:#7b4397;}
 
 
@@ -444,6 +444,15 @@
 
       <div class="divider"></div>
 
+      <h2>Map display</h2>
+      <div class="field" style="margin-bottom:4px;">
+        <label style="display:flex;align-items:center;gap:7px;font-weight:500;cursor:pointer;">
+          <input type="checkbox" id="separateToggle" checked style="width:auto;"> Separate overlapping pins
+        </label>
+      </div>
+
+      <div class="divider"></div>
+
       <h2>Firm Commitment Pipeline Deals</h2>
       <div class="field" style="margin-bottom:4px;">
         <label style="display:flex;align-items:center;gap:7px;font-weight:500;cursor:pointer;">
@@ -461,7 +470,7 @@
           <option value="24">24 months</option>
         </select>
       </div>
-      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Off by default. Adds two kinds of purple pins: recently-insured properties HUD's main file hasn't caught up to yet, and Firm Commitments that <strong>haven't closed yet</strong> — these can still fall through. The age limit only applies to the latter (not-yet-closed commitments can go stale; recently-insured ones don't need an age check) and defaults to no limit — old, likely-dead commitments are included unless you choose to exclude them. Only city-level location is available for either (no street address exists yet), shown as a coarser, distinctly-colored pin.</p>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Off by default. Searches the FHA MF Firm Commitment and Endorsement Database and adds a purple pin for recently-insured properties HUD's main file hasn't caught up to yet, and Firm Commitments that haven't closed yet . Only city-level location is available for either (no street address exists yet), shown as a coarser, distinctly-colored pin.</p>
 
       <div class="divider"></div>
 
@@ -548,16 +557,6 @@
 
       <div class="divider"></div>
 
-      <h2>Map display</h2>
-      <div class="field" style="margin-bottom:4px;">
-        <label style="display:flex;align-items:center;gap:7px;font-weight:500;cursor:pointer;">
-          <input type="checkbox" id="separateToggle" checked style="width:auto;"> Separate overlapping pins
-        </label>
-      </div>
-      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">When on, pins that sit exactly on top of each other nudge apart with a line back to the real spot. Turn off for large result sets (e.g. a whole state) where that looks cluttered — pins will simply overlap instead.</p>
-
-      <div class="divider"></div>
-
       <h2>Location corrections</h2>
       <p style="font-size:10.5px;color:var(--ink-soft);margin-bottom:8px;">Click "📍 Fix this location" in any pin's popup, then click the map where the property actually is. Corrections only last for this browser session unless you export them.</p>
       <div style="display:flex; gap:8px;">
@@ -573,9 +572,8 @@
         <span class="badge badge-approx">approx</span> = none of those could match the address; falling back to the ZIP code centroid.<br>
         <span class="badge badge-manual">manual</span> = you corrected this pin by hand.<br>
         <span class="badge badge-pipeline">pipeline</span> = a Firm Commitment or recently-insured deal not yet in the main HUD dataset — city-center location only (see "Firm Commitment Pipeline Deals" toggle above).<br><br>
-        ★ = the address/location you searched for. The search radius, the drawn area, and the city/state/zip/county boundary (via U.S. Census TIGERweb — may not draw if that service is briefly unavailable) all show the same way: a solid green outline.<br><br>
         Every pin always shows its own property number. If two properties sit right on top of each other on screen (e.g. sharing a zip centroid), they're nudged apart slightly with a thin line back to the true spot. Click any table row to jump the map straight to that property and open its details.<br><br>
-        County names are derived from each property's ZIP code (not HUD's own county field, which has gaps), so county search is complete and consistently spelled for every property. Searching by county also draws its boundary outline, same as state/city/zip.
+        County names are derived from each property's ZIP code (not HUD's own county field, which has gaps), so county search is complete and consistently spelled for every property.
       </p>
 
       <div class="divider"></div>
