@@ -123,7 +123,7 @@ df2['proj_num'] = df2['HUD PROJECT NUMBER'].astype(str).str.strip().str.zfill(8)
 
 # Only keep df2 columns we need for enrichment (avoid dup city/state/zip - use df1's address data as primary)
 df2_small = df2[['proj_num','UNITS','INITIAL ENDORSEMENT DATE','FINAL ENDORSEMENT DATE',
-                  'ORIGINAL MORTGAGE AMOUNT','HOLDER NAME','HOLDER CITY','HOLDER STATE',
+                  'ORIGINAL MORTGAGE AMOUNT','AMORITIZED PRINCIPAL BALANCE','HOLDER NAME','HOLDER CITY','HOLDER STATE',
                   'SECTION OF ACT CODE','SOA CATEGORY/SUB CATEGORY','BUSINESS_TYPE',
                   'TC','TE']].copy()
 BT_CODE = {'MF Residential':'R', 'MF Healthcare':'H', 'MF Hospitals':'P'}
@@ -225,8 +225,19 @@ for _, row in merged.iterrows():
         except Exception:
             endorse_str = str(endorse)
 
+    final_endorse = row['FINAL ENDORSEMENT DATE']
+    final_endorse_str = ''
+    if pd.notna(final_endorse):
+        try:
+            final_endorse_str = pd.to_datetime(final_endorse).strftime('%Y-%m-%d')
+        except Exception:
+            final_endorse_str = str(final_endorse)
+
     mortgage_amt = row['ORIGINAL MORTGAGE AMOUNT']
     mortgage_amt = float(mortgage_amt) if pd.notna(mortgage_amt) else None
+
+    amortized_balance = row['AMORITIZED PRINCIPAL BALANCE']
+    amortized_balance = float(amortized_balance) if pd.notna(amortized_balance) else None
 
     units = row['UNITS']
     units = int(units) if pd.notna(units) else None
@@ -247,7 +258,9 @@ for _, row in merged.iterrows():
         "f": row['fha_number'],
         "u": units,
         "e": endorse_str,
+        "fe": final_endorse_str,
         "m": round(mortgage_amt) if mortgage_amt is not None else None,
+        "bal": round(amortized_balance) if amortized_balance is not None else None,
         "h": str(row['HOLDER NAME']).strip() if pd.notna(row['HOLDER NAME']) else '',
         "so": str(row['soa_numeric_name']).strip() if pd.notna(row['soa_numeric_name']) and str(row['soa_numeric_name']).strip() else '(unspecified)',
         "la": round(lat, 4) if lat is not None else None,
@@ -394,7 +407,9 @@ if firm_commitments_path:
                 "f": fha8,
                 "u": units,
                 "e": activity_date_str,
+                "fe": "",
                 "m": round(mortgage_amt) if mortgage_amt is not None else None,
+                "bal": None,
                 "h": str(row.get('Lender Name for Firm Activity', '')).strip() if pd.notna(row.get('Lender Name for Firm Activity')) else '',
                 "so": category,
                 "la": round(lat, 4) if lat is not None else None,
