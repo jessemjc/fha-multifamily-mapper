@@ -1529,7 +1529,7 @@ function bindPropertyPopup(marker, r){
   if(r.pending){
     const statusLabel = r.pending === 'catching_up'
       ? `Initially Endorsed ${r.e || ''} — insured, but not yet reflected in this month's main HUD dataset (should appear normally next update).`
-      : `Firm Commitment: ${escapeHtml(r.pendingStatus || 'Issued')} (${r.e || 'date unknown'}) — <strong>not yet insured</strong>. Commitments can still be withdrawn or expire before closing.`;
+      : `Firm Commitment: ${escapeHtml(r.pendingStatus || 'Issued')} (${r.fcDate || 'date unknown'}) — <strong>not yet insured</strong>. Commitments can still be withdrawn or expire before closing.`;
     const flags = flagsSummary(r);
     const flagsLine = flags ? `Flags: ${escapeHtml(flags)}<br>` : '';
     marker.bindPopup(
@@ -1607,7 +1607,11 @@ function findClearSpot(desiredPx, occupied, minSep){
 }
 
 function placePin(r, pt){
-  const icon = numberedIcon(r._num, r._geo);
+  // True pipeline deals (not yet closed) always stay visually distinct on
+  // the map, even after a manual location fix — "catching up" deals and
+  // ordinary properties still switch to green like any other fixed pin.
+  const pinStatus = r.pending === 'pipeline' ? 'city' : r._geo;
+  const icon = numberedIcon(r._num, pinStatus);
   const m = L.marker(pt, {icon});
   bindPropertyPopup(m, r);
   markerLayer.addLayer(m);
@@ -1712,6 +1716,7 @@ document.getElementById('separateToggle').addEventListener('change', (e) => {
 
 function flagsSummary(r){
   const flags = [];
+  if(r.pending === 'pipeline') flags.push('Pipeline');
   if(r.sub === true) flags.push('Sub');
   if(r.sec8 === true) flags.push('Sec8');
   if(r.restr === true) flags.push('Restr');
@@ -1877,7 +1882,7 @@ function exportCSV(){
   if(!currentResults.length) return;
   const hasDist = currentResults[0]._dist !== undefined;
   const hasSubjectDist = currentResults.some(r => r._distSubject !== undefined);
-  const headers = ['Property','Address','City','County','State','Zip','Miles','MilesToSubject','LocationType','Lat','Lon','Units','InitialEndorsed','FinalEndorsed','MortgageAmount','AmortizedBalance','FinancingType','SOACode','Subsidized','Section8','UseRestriction','TaxCredit','TaxExemptBond','PendingStatus','FHANumber','Holder'];
+  const headers = ['Property','Address','City','County','State','Zip','Miles','MilesToSubject','LocationType','Lat','Lon','Units','InitialEndorsed','FinalEndorsed','MortgageAmount','AmortizedBalance','FinancingType','SOACode','Subsidized','Section8','UseRestriction','TaxCredit','TaxExemptBond','PendingStatus','FirmCommitmentDate','FHANumber','Holder'];
   const lines = [headers.join(',')];
   for(const r of currentResults){
     const pt = pointFor(r);
@@ -1890,7 +1895,7 @@ function exportCSV(){
       pt ? pt[0] : '', pt ? pt[1] : '',
       r.u ?? '', r.e ?? '', r.fe ?? '', r.m ?? '', r.bal ?? '', r.fl ?? '', r.so ?? '',
       yn(r.sub), yn(r.sec8), yn(r.restr), yn(r.tc), yn(r.te),
-      r.pendingStatus ?? '',
+      r.pendingStatus ?? '', r.fcDate ?? '',
       r.f ?? '', r.h ?? ''
     ].map(v => `"${String(v).replace(/"/g,'""')}"`);
     lines.push(row.join(','));

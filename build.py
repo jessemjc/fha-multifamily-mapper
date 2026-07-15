@@ -360,6 +360,19 @@ if firm_commitments_path:
         fc['fha8'] = fc['FHA Number'].astype(str).str.strip().str.zfill(8)
         existing_fha = set(r['f'] for r in records)
 
+        # The Firm Commitments sheet's "Firm Activity Date" only ever records
+        # when the Firm Commitment stage happened — never a real endorsement
+        # date. For "catching up" (Initially Endorsed) records, the accurate
+        # initial endorsement date lives in this separate sheet instead.
+        ie_dates = {}
+        try:
+            ie_sheet = pd.read_excel(firm_commitments_path, sheet_name="Initial Endorsements", header=8)
+            ie_sheet['fha8'] = ie_sheet['FHA Number'].astype(str).str.strip().str.zfill(8)
+            for _, ie_row in ie_sheet.iterrows():
+                ie_dates[ie_row['fha8']] = ie_row.get('Date of IE')
+        except Exception as e:
+            print(f"Could not read Initial Endorsements sheet ({e}) — catching-up records will show no initial endorsement date.")
+
         pipeline_statuses = {'Firm Commitment Issued', 'Firm Commitment Amended',
                               'Firm Commitment Reissued', 'Firm Commitment Reopened (Previously Expired)'}
 
@@ -387,12 +400,28 @@ if firm_commitments_path:
             mortgage_amt = float(mortgage_amt) if pd.notna(mortgage_amt) else None
             units = row.get('Total Units')
             units = int(units) if pd.notna(units) else None
-            activity_date_str = ''
+
+            # The Firm Commitment date is always meaningful (every pending
+            # record has one) — kept as its own clearly-labeled field, never
+            # shown as an "Initial Endorsed" date.
+            fc_date_str = ''
             if pd.notna(row.get('Firm Activity Date')):
                 try:
-                    activity_date_str = pd.to_datetime(row['Firm Activity Date']).strftime('%Y-%m-%d')
+                    fc_date_str = pd.to_datetime(row['Firm Activity Date']).strftime('%Y-%m-%d')
                 except Exception:
                     pass
+
+            # A true initial endorsement date only exists for "catching up"
+            # records (already insured) — pipeline deals haven't been
+            # endorsed at all yet, so this stays blank for those.
+            initial_endorse_str = ''
+            if pending_type == 'catching_up':
+                ie_date = ie_dates.get(fha8)
+                if ie_date is not None and pd.notna(ie_date):
+                    try:
+                        initial_endorse_str = pd.to_datetime(ie_date).strftime('%Y-%m-%d')
+                    except Exception:
+                        pass
 
             facility = str(row.get('Facility Type', '')).strip()
             category = str(row.get('Program Category', '')).strip() if pd.notna(row.get('Program Category')) else ''
@@ -406,8 +435,9 @@ if firm_commitments_path:
                 "county": county,
                 "f": fha8,
                 "u": units,
-                "e": activity_date_str,
+                "e": initial_endorse_str,
                 "fe": "",
+                "fcDate": fc_date_str,
                 "m": round(mortgage_amt) if mortgage_amt is not None else None,
                 "bal": None,
                 "h": str(row.get('Lender Name for Firm Activity', '')).strip() if pd.notna(row.get('Lender Name for Firm Activity')) else '',
