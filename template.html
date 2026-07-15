@@ -521,6 +521,8 @@
       </div>
       <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">All default to Include (no filtering). Properties with no data for a flag are never excluded by "Exclude" and never shown by "Only" for that flag.</p>
 
+      <button id="updateFiltersBtn" type="button" style="display:none; width:100%; margin-top:10px; background:var(--accent); color:#fff; border:none; padding:9px; font-size:12.5px; font-weight:700; text-transform:uppercase; border-radius:3px;">↻ Update filters</button>
+
       <div class="divider"></div>
 
       <h2>Map display</h2>
@@ -755,14 +757,13 @@ function pointInPolygon(pt, polygon){ // pt: [lat,lon]; polygon: L.LatLng[]
   return inside;
 }
 
-function finishDrawing(){
-  if(drawnLatLngs.length < 3) return;
-  const polygonPoints = drawnLatLngs.slice();
-  disarmAllClickModes();
-
-  drawnAreaLayer = L.polygon(polygonPoints, {
-    color: '#0d5c46', weight: 2.5, fillColor: '#0d5c46', fillOpacity: 0.08
-  }).addTo(map);
+function runDrawnAreaSearch(polygonPoints, drawShape){
+  if(drawShape){
+    clearDrawnArea();
+    drawnAreaLayer = L.polygon(polygonPoints, {
+      color: '#0d5c46', weight: 2.5, fillColor: '#0d5c46', fillOpacity: 0.08
+    }).addTo(map);
+  }
 
   const types = activeBusinessTypes();
   const finGroups = activeFinancingGroups();
@@ -789,6 +790,13 @@ function finishDrawing(){
   } else {
     setStatus(`Found ${results.length.toLocaleString()} properties (zip-level pins shown). Click "Locate street addresses" for exact pins.`);
   }
+}
+
+function finishDrawing(){
+  if(drawnLatLngs.length < 3) return;
+  const polygonPoints = drawnLatLngs.slice();
+  disarmAllClickModes();
+  runDrawnAreaSearch(polygonPoints, true);
 }
 
 // Recomputes polygon membership using exact geocoded coordinates once
@@ -977,9 +985,34 @@ document.querySelectorAll('.tristate').forEach(group => {
     btn.addEventListener('click', () => {
       group.querySelectorAll('.tristate-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      showUpdateFiltersButtonIfSearched();
     });
   });
 });
+
+/* ---------- UPDATE FILTERS BUTTON ---------- */
+// Shows up whenever a filter changes after a search is already on screen,
+// so results can be refreshed without re-entering the address/area/etc.
+function showUpdateFiltersButtonIfSearched(){
+  if(currentResults.length > 0 || searchContext){
+    document.getElementById('updateFiltersBtn').style.display = 'block';
+  }
+}
+function hideUpdateFiltersButton(){
+  document.getElementById('updateFiltersBtn').style.display = 'none';
+}
+async function reapplyCurrentSearch(){
+  if(!searchContext){ setStatus('No active search to update.', true); return; }
+  hideUpdateFiltersButton();
+  if(searchContext.isRadius){
+    await runRadiusSearchFromPoint(searchContext.point, searchContext.query);
+  } else if(searchContext.isDrawn){
+    runDrawnAreaSearch(searchContext.polygon, false);
+  } else {
+    document.getElementById('filterBtn').click();
+  }
+}
+document.getElementById('updateFiltersBtn').addEventListener('click', reapplyCurrentSearch);
 
 /* ---------- DROPDOWN UI (Property type / Financing type) ---------- */
 function setupDropdown(wrapperId, btnId, panelId, updateLabel){
@@ -1022,6 +1055,8 @@ function updateFinLabel(){
 }
 setupDropdown('btDropdown','btDropdownBtn','btDropdownPanel', updateBtLabel);
 setupDropdown('finDropdown','finDropdownBtn','finDropdownPanel', updateFinLabel);
+document.getElementById('btDropdownPanel').addEventListener('change', () => showUpdateFiltersButtonIfSearched());
+document.getElementById('finDropdownPanel').addEventListener('change', () => showUpdateFiltersButtonIfSearched());
 
 
 /* ============================================================
@@ -1696,6 +1731,7 @@ function buildTable(){
 }
 
 function renderAll(titleText){
+  hideUpdateFiltersButton();
   document.getElementById('resultsTitle').textContent = titleText;
   document.getElementById('exportBtn').disabled = currentResults.length === 0;
   document.getElementById('geocodeBtn').disabled = currentResults.length === 0;
