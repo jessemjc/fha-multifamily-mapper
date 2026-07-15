@@ -453,10 +453,10 @@
 
       <div class="divider"></div>
 
-      <h2>Firm Commitment Pipeline Deals</h2>
+      <h2>Firm Commitment Deals</h2>
       <div class="field" style="margin-bottom:4px;">
         <label style="display:flex;align-items:center;gap:7px;font-weight:500;cursor:pointer;">
-          <input type="checkbox" id="includePendingToggle" style="width:auto;"> Include pipeline / not-yet-caught-up deals
+          <input type="checkbox" id="includePendingToggle" style="width:auto;"> Include firm commitment / not-yet-caught-up deals
         </label>
       </div>
       <div class="field" style="margin-top:8px;">
@@ -470,6 +470,7 @@
           <option value="24">24 months</option>
         </select>
       </div>
+      <button id="updateFiltersBtnLocal" type="button" style="display:none; width:100%; margin-top:8px; background:var(--accent); color:#fff; border:none; padding:7px; font-size:11.5px; font-weight:700; text-transform:uppercase; border-radius:3px;">↻ Update</button>
       <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Off by default. Searches the FHA MF Firm Commitment and Endorsement Database and adds a purple pin for recently-insured properties HUD's main file hasn't caught up to yet, and Firm Commitments that haven't closed yet . Only city-level location is available for either (no street address exists yet), shown as a coarser, distinctly-colored pin.</p>
 
       <div class="divider"></div>
@@ -571,7 +572,7 @@
         <span class="badge badge-exact">exact</span> = geocoded to the real street address, on demand, only for properties in your current results. Tries the U.S. Census geocoder first (two different parsers), then OpenStreetMap as a last resort — different address databases catch different addresses.<br>
         <span class="badge badge-approx">approx</span> = none of those could match the address; falling back to the ZIP code centroid.<br>
         <span class="badge badge-manual">manual</span> = you corrected this pin by hand.<br>
-        <span class="badge badge-pipeline">pipeline</span> = a Firm Commitment or recently-insured deal not yet in the main HUD dataset — city-center location only (see "Firm Commitment Pipeline Deals" toggle above).<br><br>
+        <span class="badge badge-pipeline">city-only</span> = a Firm Commitment or recently-insured deal not yet in the main HUD dataset — city-center location only (see "Firm Commitment Deals" toggle above).<br><br>
         Every pin always shows its own property number. If two properties sit right on top of each other on screen (e.g. sharing a zip centroid), they're nudged apart slightly with a thin line back to the true spot. Click any table row to jump the map straight to that property and open its details.<br><br>
         County names are derived from each property's ZIP code (not HUD's own county field, which has gaps), so county search is complete and consistently spelled for every property.
       </p>
@@ -632,7 +633,7 @@ document.getElementById('sourcesInfo').innerHTML = `
   Subsidized status, Section 8 assistance, and use-restriction flags.<br>
   HUD lists this data as of: ${BUILD_META.portfolioDate || 'unknown'}<br><br>
   <strong style="color:var(--ink);">HUD FHA Multifamily Firm Commitments and Endorsements Database</strong><br>
-  Powers the "Firm Commitment Pipeline Deals" toggle — properties either recently insured but not yet in the main mortgages file above, or with an active Firm Commitment issued in the last 12 months that hasn't closed yet. City-level location only (no street address available in this source).<br>
+  Powers the "Firm Commitment Deals" toggle — properties either recently insured but not yet in the main mortgages file above, or with an active Firm Commitment that hasn't closed yet. City-level location only (no street address available in this source).<br>
   HUD lists this data as of: ${BUILD_META.firmCommitmentsDate || 'unknown'}<br><br>
   <strong style="color:var(--ink);">This site last refreshed with new HUD data:</strong> ${BUILD_META.buildDate || 'unknown'}
 `;
@@ -1047,10 +1048,12 @@ document.querySelectorAll('.tristate').forEach(group => {
 function showUpdateFiltersButtonIfSearched(){
   if(currentResults.length > 0 || searchContext){
     document.getElementById('updateFiltersBtn').style.display = 'block';
+    document.getElementById('updateFiltersBtnLocal').style.display = 'block';
   }
 }
 function hideUpdateFiltersButton(){
   document.getElementById('updateFiltersBtn').style.display = 'none';
+  document.getElementById('updateFiltersBtnLocal').style.display = 'none';
 }
 async function reapplyCurrentSearch(){
   if(!searchContext){ setStatus('No active search to update.', true); return; }
@@ -1064,6 +1067,7 @@ async function reapplyCurrentSearch(){
   }
 }
 document.getElementById('updateFiltersBtn').addEventListener('click', reapplyCurrentSearch);
+document.getElementById('updateFiltersBtnLocal').addEventListener('click', reapplyCurrentSearch);
 
 /* ---------- DROPDOWN UI (Property type / Financing type) ---------- */
 function setupDropdown(wrapperId, btnId, panelId, updateLabel){
@@ -1716,7 +1720,7 @@ document.getElementById('separateToggle').addEventListener('change', (e) => {
 
 function flagsSummary(r){
   const flags = [];
-  if(r.pending === 'pipeline') flags.push('Pipeline');
+  if(r.pending === 'pipeline') flags.push('FC');
   if(r.sub === true) flags.push('Sub');
   if(r.sec8 === true) flags.push('Sec8');
   if(r.restr === true) flags.push('Restr');
@@ -1765,7 +1769,7 @@ function buildTable(){
       else if(c.key==='_dist' || c.key==='_distSubject') val = val!==undefined ? val.toFixed(1) : '—';
       else if(c.key==='_geo'){
         const cls = val==='exact' ? 'badge-exact' : val==='manual' ? 'badge-manual' : val==='city' ? 'badge-pipeline' : val==='pending' ? 'badge-pending' : val==='approx' ? 'badge-approx' : 'badge-pending';
-        const txt = val==='exact' ? 'exact' : val==='manual' ? 'manual' : val==='city' ? 'pipeline' : val==='pending' ? 'locating…' : val==='approx' ? 'approx' : 'not located';
+        const txt = val==='exact' ? 'exact' : val==='manual' ? 'manual' : val==='city' ? 'city-only' : val==='pending' ? 'locating…' : val==='approx' ? 'approx' : 'not located';
         html += `<td><span class="badge ${cls}">${txt}</span></td>`;
         continue;
       }
