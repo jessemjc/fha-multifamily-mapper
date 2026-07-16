@@ -570,7 +570,7 @@
       <p style="font-size:11px;color:var(--ink-soft);line-height:1.6;">
         Data: HUD Insured Multifamily Mortgages (active) cross-referenced with HUD's Insured Active Multifamily FHA Property Addresses file by FHA project number, plus HUD's Active Multifamily Portfolio data for subsidy/restriction/tax-credit flags.<br><br>
         <span class="badge badge-exact">exact</span> = geocoded to the real street address, on demand, only for properties in your current results. Tries the U.S. Census geocoder first (two different parsers), then OpenStreetMap as a last resort — different address databases catch different addresses.<br>
-        <span class="badge badge-approx">approx</span> = none of those could match the address; falling back to the ZIP code centroid.<br>
+        <span class="badge badge-approx">approx</span> = none of those could match the address; falling back to the ZIP code centroid. (A small number of confirmed-insured properties are missing a street address in HUD's own data — those show green, not brick, since they're not in question, just less precisely located.)<br>
         <span class="badge badge-manual">manual</span> = you corrected this pin by hand.<br>
         <span class="badge badge-pipeline">city-only</span> = a Firm Commitment or recently-insured deal not yet in the main HUD dataset — city-center location only (see "Firm Commitment Deals" toggle above).<br><br>
         Every pin always shows its own property number. If two properties sit right on top of each other on screen (e.g. sharing a zip centroid), they're nudged apart slightly with a thin line back to the true spot. Click any table row to jump the map straight to that property and open its details.<br><br>
@@ -646,7 +646,7 @@ for (const p of PROPS) {
   // (or occasionally state) centroid — no street address exists to
   // geocode toward, so they get their own permanent status instead of
   // going through the normal none -> pending -> exact/approx flow.
-  p._geo = p.pending ? 'city' : 'none';   // 'none' | 'pending' | 'exact' | 'approx' | 'city'
+  p._geo = p.pending ? 'city' : (p.noAddr ? 'approx' : 'none');   // 'none' | 'pending' | 'exact' | 'approx' | 'city'
 }
 const geocodeCache = new Map(); // _key -> {lat, lon, status}
 
@@ -985,7 +985,7 @@ function activeFinancingGroups(){
   return set;
 }
 function passesFinancingFilter(p, groups){
-  if(p.bt !== 'R' || p.pending) return true; // bucket scheme only applies to closed residential deals; pending/pipeline deals and non-residential types are exempt, controlled by Property type / the pending toggle instead
+  if(p.bt !== 'R' || p.pending || p.noAddr) return true; // bucket scheme only applies to closed, address-matched residential deals; pending/pipeline deals, no-address deals, and non-residential types are all exempt
   return groups.has(p.grp);
 }
 
@@ -1556,7 +1556,8 @@ function bindPropertyPopup(marker, r){
   const srcLabel = r._geoSrc === 'census' ? ' (Census)' : r._geoSrc === 'census-alt' ? ' (Census, alt parser)'
     : r._geoSrc === 'osm' ? ' (OpenStreetMap)' : r._geoSrc === 'census-hwy' ? ' (Census, highway variant)'
     : r._geoSrc === 'osm-hwy' ? ' (OpenStreetMap, highway variant)' : '';
-  const geoLabel = r._geo === 'exact' ? 'exact street address' + srcLabel
+  const geoLabel = r.noAddr ? 'currently insured — HUD\'s address file hasn\'t added this property\'s street address yet, so this is a ZIP-code-level location'
+                  : r._geo === 'exact' ? 'exact street address' + srcLabel
                   : r._geo === 'manual' ? 'manually corrected location'
                   : r._geo === 'pending' ? 'locating…'
                   : 'approximate (zip area) — no geocoder could match this address';
@@ -1615,7 +1616,9 @@ function placePin(r, pt){
   // True pipeline deals (not yet closed) always stay visually distinct on
   // the map, even after a manual location fix — "catching up" deals and
   // ordinary properties still switch to green like any other fixed pin.
-  const pinStatus = r.pending === 'pipeline' ? 'city' : r._geo;
+  // Insured properties just missing a street address (noAddr) are shown
+  // green too — they're confirmed insured, unlike pipeline deals.
+  const pinStatus = r.pending === 'pipeline' ? 'city' : (r.noAddr ? 'exact' : r._geo);
   const icon = numberedIcon(r._num, pinStatus);
   const m = L.marker(pt, {icon});
   bindPropertyPopup(m, r);

@@ -284,6 +284,90 @@ for _, row in merged.iterrows():
 print("Records without geocoding (bad/missing zip):", no_geo, "of", len(records))
 
 # ============================================================
+# INSURED PROPERTIES MISSING FROM THE ADDRESSES FILE
+# A small number of properties exist in the Active Mortgages file (so
+# they're genuinely, currently insured) but haven't yet made it into
+# HUD's separate Property Addresses file — the two files update on
+# slightly different schedules. Since there's no street address to work
+# with, these use the mortgage file's own zip code for a zip-centroid
+# location (same accuracy as any other un-refined property) rather than
+# being dropped entirely. They're real, confirmed insured properties —
+# not a "pipeline"/pending deal — so they render as normal green pins,
+# just always at zip-level accuracy since no address exists to refine.
+# ============================================================
+addr_fha_set = set(df1['fha_number'])
+no_addr_df = df2_small[~df2_small['proj_num'].isin(addr_fha_set)].copy()
+no_addr_df = no_addr_df.merge(
+    df2[['proj_num','PROPERTY NAME','PROPERTY CITY','PROPERTY STATE','PROPERTY ZIP']].drop_duplicates(subset='proj_num'),
+    on='proj_num', how='left'
+)
+no_addr_df = no_addr_df.merge(portfolio, left_on='proj_num', right_on='fha_number', how='left')
+
+no_addr_count = 0
+for _, row in no_addr_df.iterrows():
+    zip5 = clean_zip(row['PROPERTY ZIP'])
+    lat, lon, county = zip_lookup.get(zip5, (None, None, None))
+
+    endorse = row['INITIAL ENDORSEMENT DATE']
+    endorse_str = ''
+    if pd.notna(endorse):
+        try:
+            endorse_str = pd.to_datetime(endorse).strftime('%Y-%m-%d')
+        except Exception:
+            endorse_str = str(endorse)
+    final_endorse = row['FINAL ENDORSEMENT DATE']
+    final_endorse_str = ''
+    if pd.notna(final_endorse):
+        try:
+            final_endorse_str = pd.to_datetime(final_endorse).strftime('%Y-%m-%d')
+        except Exception:
+            final_endorse_str = str(final_endorse)
+
+    mortgage_amt = row['ORIGINAL MORTGAGE AMOUNT']
+    mortgage_amt = float(mortgage_amt) if pd.notna(mortgage_amt) else None
+    amortized_balance = row['AMORITIZED PRINCIPAL BALANCE']
+    amortized_balance = float(amortized_balance) if pd.notna(amortized_balance) else None
+    units = row['UNITS']
+    units = int(units) if pd.notna(units) else None
+
+    def yn(val):
+        if pd.isna(val):
+            return None
+        return str(val).strip().upper() == 'Y'
+
+    rec = {
+        "n": str(row['PROPERTY NAME']).strip(),
+        "a": "",
+        "c": str(row['PROPERTY CITY']).strip(),
+        "s": str(row['PROPERTY STATE']).strip(),
+        "z": zip5,
+        "county": county or '',
+        "f": row['proj_num'],
+        "u": units,
+        "e": endorse_str,
+        "fe": final_endorse_str,
+        "m": round(mortgage_amt) if mortgage_amt is not None else None,
+        "bal": round(amortized_balance) if amortized_balance is not None else None,
+        "h": str(row['HOLDER NAME']).strip() if pd.notna(row['HOLDER NAME']) else '',
+        "so": str(row['SOA CATEGORY/SUB CATEGORY']).strip() if pd.notna(row['SOA CATEGORY/SUB CATEGORY']) else '(unspecified)',
+        "la": round(lat, 4) if lat is not None else None,
+        "lo": round(lon, 4) if lon is not None else None,
+        "bt": BT_CODE.get(str(row['BUSINESS_TYPE']).strip(), 'R') if pd.notna(row['BUSINESS_TYPE']) else 'R',
+        "sub": yn(row.get('is_subsidized_ind')),
+        "sec8": yn(row.get('is_sec8_ind')),
+        "restr": yn(row.get('has_use_restriction_ind')),
+        "tc": bool(pd.notna(row.get('TC'))),
+        "te": bool(pd.notna(row.get('TE'))),
+        "grp": "",  # can't reliably bucket without the addresses file's soa_numeric_name
+        "fl": str(row['SOA CATEGORY/SUB CATEGORY']).strip() if pd.notna(row['SOA CATEGORY/SUB CATEGORY']) else '(unspecified)',
+        "noAddr": True,
+    }
+    records.append(rec)
+    no_addr_count += 1
+
+print(f"Added {no_addr_count} insured properties missing from the addresses file (zip-level, shown as normal/green pins).")
+
+# ============================================================
 # FIRM COMMITMENTS / PIPELINE DEALS
 # Adds two categories of properties not yet in the main dataset:
 #  - "catching_up": already Initially Endorsed (i.e. actually insured),
