@@ -1539,7 +1539,7 @@ function bindPropertyPopup(marker, r){
     const flagsLine = flags ? `Flags: ${escapeHtml(flags)}<br>` : '';
     marker.bindPopup(
       `<div class="popup-title">#${r._num} — ${escapeHtml(r.n)}</div>` +
-      `<div class="popup-meta">${escapeHtml(r.c)}${r.county ? ', ' + escapeHtml(r.county) : ''}, ${r.s}<br>` +
+      `<div class="popup-meta">${escapeHtml(r.c)}${r.county ? ', ' + escapeHtml(shortCounty(r.county)) : ''}, ${r.s}<br>` +
       `FHA #${r.f} · ${r.u ?? '—'} units<br>` +
       `Program: ${escapeHtml(r.fl) || '—'}<br>` +
       `${flagsLine}` +
@@ -1565,7 +1565,7 @@ function bindPropertyPopup(marker, r){
   const flagsLine = flags ? `Flags: ${escapeHtml(flags)}<br>` : '';
   marker.bindPopup(
     `<div class="popup-title">#${r._num} — ${escapeHtml(r.n)}</div>` +
-    `<div class="popup-meta">${escapeHtml(r.a)}, ${escapeHtml(r.c)}${r.county ? ', ' + escapeHtml(r.county) : ''}, ${r.s} ${r.z}<br>` +
+    `<div class="popup-meta">${escapeHtml(r.a)}, ${escapeHtml(r.c)}${r.county ? ', ' + escapeHtml(shortCounty(r.county)) : ''}, ${r.s} ${r.z}<br>` +
     `${dist}${subjectDist}FHA #${r.f} · ${r.u ?? '—'} units<br>` +
     `Financing type: ${escapeHtml(r.fl) || '—'}<br>` +
     `${flagsLine}` +
@@ -1722,6 +1722,10 @@ document.getElementById('separateToggle').addEventListener('change', (e) => {
   if(currentResults.length) drawMarkers();
 });
 
+function shortCounty(name){
+  if(!name) return name;
+  return name.replace(/\s+(county|parish|borough|census area|municipality)\s*$/i, '').trim();
+}
 function flagsSummary(r){
   const flags = [];
   if(r.pending === 'pipeline') flags.push('FC');
@@ -1745,10 +1749,11 @@ function buildTable(){
     {key:'_distSubject', label:'Mi. to Subject'},
     {key:'_geo', label:'Location'},
     {key:'u', label:'Units'},
-    {key:'e', label:'Initial Endorsed'},
-    {key:'fe', label:'Final Endorsed'},
+    {key:'e', label:'IE'},
+    {key:'fe', label:'FE'},
+    {key:'fcDate', label:'FC Date'},
     {key:'m', label:'Mortgage $'},
-    {key:'bal', label:'Amortized Balance $'},
+    {key:'bal', label:'Amort Balance $'},
     {key:'fl', label:'Financing Type'},
     {key:'_flags', label:'Flags'},
     {key:'f', label:'FHA #'},
@@ -1768,7 +1773,7 @@ function buildTable(){
     html += `<tr data-fha="${escapeHtml(r.f)}">`;
     for(const c of visibleCols){
       const isNum = c.key==='u' || c.key==='m' || c.key==='bal' || c.key==='_dist' || c.key==='_distSubject' || c.key==='_num';
-      let val = c.key === '_flags' ? flagsSummary(r) : r[c.key];
+      let val = c.key === '_flags' ? flagsSummary(r) : c.key === 'county' ? shortCounty(r.county) : r[c.key];
       if(c.key==='m' || c.key==='bal') val = fmtMoney(val);
       else if(c.key==='_dist' || c.key==='_distSubject') val = val!==undefined ? val.toFixed(1) : '—';
       else if(c.key==='_geo'){
