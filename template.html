@@ -225,6 +225,7 @@
   }
   tbody tr:hover{background:var(--accent-soft); cursor:pointer;}
   .num{text-align:right; font-family:var(--mono); white-space:nowrap;}
+  .nowrap{white-space:nowrap;}
   .badge{
     display:inline-block;
     font-family:var(--mono);
@@ -1773,6 +1774,7 @@ function buildTable(){
     html += `<tr data-fha="${escapeHtml(r.f)}">`;
     for(const c of visibleCols){
       const isNum = c.key==='u' || c.key==='m' || c.key==='bal' || c.key==='_dist' || c.key==='_distSubject' || c.key==='_num';
+      const isNoWrap = c.key==='e' || c.key==='fe' || c.key==='fcDate' || c.key==='s' || c.key==='z' || c.key==='f';
       let val = c.key === '_flags' ? flagsSummary(r) : c.key === 'county' ? shortCounty(r.county) : r[c.key];
       if(c.key==='m' || c.key==='bal') val = fmtMoney(val);
       else if(c.key==='_dist' || c.key==='_distSubject') val = val!==undefined ? val.toFixed(1) : '—';
@@ -1783,7 +1785,7 @@ function buildTable(){
         continue;
       }
       else if(val===null || val===undefined || val==='') val = '—';
-      html += `<td class="${isNum?'num':''}">${escapeHtml(val)}</td>`;
+      html += `<td class="${isNum?'num':isNoWrap?'nowrap':''}">${escapeHtml(val)}</td>`;
     }
     html += '</tr>';
   }
