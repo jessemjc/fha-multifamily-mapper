@@ -455,10 +455,12 @@
       <div class="divider"></div>
 
       <h2>Firm Commitment Deals</h2>
-      <div class="field" style="margin-bottom:4px;">
-        <label style="display:flex;align-items:center;gap:7px;font-weight:500;cursor:pointer;">
-          <input type="checkbox" id="includePendingToggle" style="width:auto;"> Include firm commitment / not-yet-caught-up deals
-        </label>
+      <div class="tristate-row">
+        <div class="tristate" data-filter="firmCommitment">
+          <button type="button" class="tristate-btn" data-value="include">Include</button>
+          <button type="button" class="tristate-btn active" data-value="exclude">Exclude</button>
+          <button type="button" class="tristate-btn" data-value="only">Only</button>
+        </div>
       </div>
       <div class="field" style="margin-top:8px;">
         <label for="pendingAgeSelect">Exclude Firm Commitments older than</label>
@@ -472,7 +474,7 @@
         </select>
       </div>
       <button id="updateFiltersBtnLocal" type="button" style="display:none; width:100%; margin-top:8px; background:var(--accent); color:#fff; border:none; padding:7px; font-size:11.5px; font-weight:700; text-transform:uppercase; border-radius:3px;">↻ Update</button>
-      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Off by default. Searches the FHA MF Firm Commitment and Endorsement Database and adds a purple pin for recently-insured properties HUD's main file hasn't caught up to yet, and Firm Commitments that haven't closed yet . Only city-level location is available for either (no street address exists yet), shown as a coarser, distinctly-colored pin.</p>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Excluded by default. "Include" adds a purple pin for recently-insured properties HUD's main file hasn't caught up to yet, and Firm Commitments that haven't closed yet, alongside your normal results. "Only" shows just the Firm Commitments (not-yet-closed deals) and hides everything else. Only city-level location is available (no street address exists yet), shown as a coarser, distinctly-colored pin.</p>
 
       <div class="divider"></div>
 
@@ -1026,25 +1028,31 @@ function passesTriStateFilters(p){
   }
   return true;
 }
-function passesPendingFilter(p){
-  if(!p.pending) return true; // normal properties are never affected by this toggle
-  if(!document.getElementById('includePendingToggle').checked) return false;
-  // Age limit only applies to not-yet-closed "pipeline" deals — a
-  // "catching_up" record is already insured, just not yet reflected in
-  // the main file, so there's no meaningful "how stale is this" question.
-  if(p.pending === 'pipeline'){
-    const maxMonths = parseInt(document.getElementById('pendingAgeSelect').value, 10);
-    if(maxMonths > 0 && p.e){
-      const activityDate = new Date(p.e);
-      if(!isNaN(activityDate.getTime())){
-        const ageDays = (Date.now() - activityDate.getTime()) / 86400000;
-        if(ageDays > maxMonths * 30) return false;
-      }
+function passesAgeLimit(p){
+  if(p.pending !== 'pipeline') return true; // age limit only meaningful for not-yet-closed deals
+  const maxMonths = parseInt(document.getElementById('pendingAgeSelect').value, 10);
+  if(maxMonths > 0 && p.fcDate){
+    const activityDate = new Date(p.fcDate);
+    if(!isNaN(activityDate.getTime())){
+      const ageDays = (Date.now() - activityDate.getTime()) / 86400000;
+      if(ageDays > maxMonths * 30) return false;
     }
   }
   return true;
 }
-document.getElementById('includePendingToggle').addEventListener('change', () => showUpdateFiltersButtonIfSearched());
+function passesPendingFilter(p){
+  const mode = getTristateValue('firmCommitment');
+  if(mode === 'only'){
+    // "Only" means only true Firm Commitments (not-yet-closed) — hides
+    // ordinary properties AND the separate "catching up" (already
+    // insured, just not yet in the main file) category.
+    if(p.pending !== 'pipeline') return false;
+    return passesAgeLimit(p);
+  }
+  if(!p.pending) return true; // normal properties always pass in include/exclude modes
+  if(mode === 'exclude') return false;
+  return passesAgeLimit(p); // mode === 'include'
+}
 document.getElementById('pendingAgeSelect').addEventListener('change', () => showUpdateFiltersButtonIfSearched());
 document.querySelectorAll('.tristate').forEach(group => {
   group.querySelectorAll('.tristate-btn').forEach(btn => {
