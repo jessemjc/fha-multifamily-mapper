@@ -200,6 +200,86 @@ for z in zipcodes.list_all():
     county = z['county'] if z['county'] else None
     zip_lookup[z['zip_code']] = (lat, lon, county)
 
+# ============================================================
+# HUD PRE-GEOCODED COORDINATES (HUD Insured Multifamily Properties, ArcGIS)
+# HUD's own enterprise geocoding service already has rooftop or ZIP+4
+# precision for the large majority of properties. Where available at
+# that accuracy tier, this REPLACES the zip-centroid coordinate outright
+# (not just a fallback) — the property then loads already at street-level
+# precision with zero live geocoding calls needed, and only properties
+# HUD couldn't accurately geocode go through the live Census/OSM chain
+# like before.
+#
+# Queried directly from the live ArcGIS REST API (paginated — a single
+# request only returns ~1000-2000 rows, so this loops with increasing
+# resultOffset until no more features come back). This wasn't something
+# I could personally test against the live service (this environment's
+# tools can't reach arcgis.com), so this is built on how ArcGIS REST APIs
+# universally work, not a verified-successful run — if HUD ever changes
+# this service's structure, this step fails gracefully and the pipeline
+# falls back to 100% live Census/OSM geocoding for every property, same
+# as before this feature existed.
+# ============================================================
+ARCGIS_BASE = "https://services.arcgis.com/VTyQ9soqVukalItT/ArcGIS/rest/services/HUD_Insured_Multifamily_Properties/FeatureServer/0"
+
+def fetch_arcgis_layer(base_url, out_fields, where="1=1", page_size=2000, max_pages=50):
+    all_features = []
+    offset = 0
+    for _ in range(max_pages):
+        params = {
+            "where": where,
+            "outFields": out_fields,
+            "f": "json",
+            "resultRecordCount": page_size,
+            "resultOffset": offset,
+        }
+        resp = requests.get(base_url + "/query", params=params, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        if "error" in data:
+            raise Exception(f"ArcGIS API error: {data['error']}")
+        features = data.get("features", [])
+        if not features:
+            break
+        all_features.extend(features)
+        if not data.get("exceededTransferLimit", False):
+            break
+        offset += page_size
+    return all_features
+
+hud_geocode_lookup = {}
+try:
+    features = fetch_arcgis_layer(ARCGIS_BASE, "PRIMARY_FHA_NUMBER,LAT,LON,LVL2KX")
+    print(f"Fetched {len(features)} records from HUD's ArcGIS geocoding layer.")
+    for feat in features:
+        attrs = feat.get("attributes", {})
+        if attrs.get("LVL2KX") not in ("R", "4"):
+            continue
+        fha_raw = attrs.get("PRIMARY_FHA_NUMBER")
+        lat_val = attrs.get("LAT")
+        lon_val = attrs.get("LON")
+        if fha_raw is None or lat_val is None or lon_val is None:
+            continue
+        fha8 = str(fha_raw).strip().zfill(8)
+        hud_geocode_lookup[fha8] = (float(lat_val), float(lon_val))
+    print(f"HUD pre-geocoded coordinates loaded for {len(hud_geocode_lookup)} FHA numbers (rooftop/ZIP+4 accuracy only).")
+except Exception as e:
+    print(f"Could not fetch HUD's ArcGIS geocoding layer ({e}) — skipping pre-geocoding enhancement this run "
+          f"(all properties will use the normal live-geocoding flow instead).")
+
+# Pull the layer's own "Data Last Edit Date" from its metadata (a clean
+# JSON field, not text-scraped) to show how current this source is.
+hud_geocode_date = None
+try:
+    meta_resp = requests.get(ARCGIS_BASE, params={"f": "json"}, timeout=30)
+    meta_resp.raise_for_status()
+    meta = meta_resp.json()
+    edit_ms = meta.get("editingInfo", {}).get("dataLastEditDate")
+    if edit_ms:
+        hud_geocode_date = datetime.fromtimestamp(edit_ms / 1000, tz=timezone.utc).strftime("%B %d, %Y")
+except Exception as e:
+    print(f"Could not fetch HUD ArcGIS layer's last-edit date ({e}).")
+
 def clean_zip(z):
     s = str(z).strip()
     s = re.sub(r'\D', '', s)
@@ -207,11 +287,19 @@ def clean_zip(z):
 
 records = []
 no_geo = 0
+hud_geocoded_count = 0
 for _, row in merged.iterrows():
     zip5 = clean_zip(row['zip_code'])
     lat, lon, county = zip_lookup.get(zip5, (None, None, None))
     if lat is None:
         no_geo += 1
+
+    fha8_lookup = str(row['fha_number']).strip().zfill(8)
+    is_hud_geocoded = fha8_lookup in hud_geocode_lookup
+    if is_hud_geocoded:
+        lat, lon = hud_geocode_lookup[fha8_lookup]
+        hud_geocoded_count += 1
+
     addr2 = str(row['address_line2_text']).strip() if pd.notna(row['address_line2_text']) else ''
     full_addr = str(row['address_line1_text']).strip()
     if addr2 and addr2.lower() != 'nan':
@@ -265,6 +353,7 @@ for _, row in merged.iterrows():
         "so": str(row['soa_numeric_name']).strip() if pd.notna(row['soa_numeric_name']) and str(row['soa_numeric_name']).strip() else '(unspecified)',
         "la": round(lat, 4) if lat is not None else None,
         "lo": round(lon, 4) if lon is not None else None,
+        "hgeo": is_hud_geocoded,
         "bt": BT_CODE.get(str(row['BUSINESS_TYPE']).strip(), 'R') if pd.notna(row['BUSINESS_TYPE']) else 'R',
         "sub": yn(row.get('is_subsidized_ind')),
         "sec8": yn(row.get('is_sec8_ind')),
@@ -282,6 +371,7 @@ for _, row in merged.iterrows():
     records.append(rec)
 
 print("Records without geocoding (bad/missing zip):", no_geo, "of", len(records))
+print(f"Records using HUD's pre-geocoded rooftop/ZIP+4 coordinates: {hud_geocoded_count} of {len(records)}")
 
 # ============================================================
 # INSURED PROPERTIES MISSING FROM THE ADDRESSES FILE
@@ -554,6 +644,7 @@ metadata = {
     "addressesDate": addresses_date or "unknown",
     "portfolioDate": portfolio_date or "unknown",
     "firmCommitmentsDate": firm_commitments_date or "unknown",
+    "hudGeocodeDate": hud_geocode_date or "unknown",
     "buildDate": build_date,
 }
 metadata_json = json.dumps(metadata)

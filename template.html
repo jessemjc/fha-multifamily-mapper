@@ -636,6 +636,9 @@ document.getElementById('sourcesInfo').innerHTML = `
   <strong style="color:var(--ink);">HUD FHA Multifamily Firm Commitments and Endorsements Database</strong><br>
   Powers the "Firm Commitment Deals" toggle — properties either recently insured but not yet in the main mortgages file above, or with an active Firm Commitment that hasn't closed yet. City-level location only (no street address available in this source).<br>
   HUD lists this data as of: ${BUILD_META.firmCommitmentsDate || 'unknown'}<br><br>
+  <strong style="color:var(--ink);">HUD Insured Multifamily Properties (ArcGIS)</strong><br>
+  HUD's own pre-computed rooftop/ZIP+4-accuracy coordinates. Where available, properties load already at street-level precision with no live geocoding needed — this covers the large majority of properties. Everything else still uses the Census/OpenStreetMap chain described above.<br>
+  HUD lists this data as of: ${BUILD_META.hudGeocodeDate || 'unknown'}<br><br>
   <strong style="color:var(--ink);">This site last refreshed with new HUD data:</strong> ${BUILD_META.buildDate || 'unknown'}<br><br>
   <em>This tool is built independently from publicly available HUD data and is not affiliated with, endorsed by, or officially associated with HUD or any federal agency. Data may be delayed, incomplete, or approximate (see notes above) — verify independently before relying on it for decisions.</em>
 `;
@@ -647,7 +650,16 @@ for (const p of PROPS) {
   // (or occasionally state) centroid — no street address exists to
   // geocode toward, so they get their own permanent status instead of
   // going through the normal none -> pending -> exact/approx flow.
-  p._geo = p.pending ? 'city' : (p.noAddr ? 'approx' : 'none');   // 'none' | 'pending' | 'exact' | 'approx' | 'city'
+  // Properties with HUD's own rooftop/ZIP+4-accuracy coordinate (hgeo)
+  // load already at street-level precision — no live geocoding needed.
+  if(p.hgeo){
+    p._geo = 'exact';
+    p._plat = p.la;
+    p._plon = p.lo;
+    p._geoSrc = 'hud';
+  } else {
+    p._geo = p.pending ? 'city' : (p.noAddr ? 'approx' : 'none');   // 'none' | 'pending' | 'exact' | 'approx' | 'city'
+  }
 }
 const geocodeCache = new Map(); // _key -> {lat, lon, status}
 
@@ -1556,7 +1568,7 @@ function bindPropertyPopup(marker, r){
   const subjectDist = r._distSubject !== undefined ? `${r._distSubject.toFixed(1)} mi from subject property<br>` : '';
   const srcLabel = r._geoSrc === 'census' ? ' (Census)' : r._geoSrc === 'census-alt' ? ' (Census, alt parser)'
     : r._geoSrc === 'osm' ? ' (OpenStreetMap)' : r._geoSrc === 'census-hwy' ? ' (Census, highway variant)'
-    : r._geoSrc === 'osm-hwy' ? ' (OpenStreetMap, highway variant)' : '';
+    : r._geoSrc === 'osm-hwy' ? ' (OpenStreetMap, highway variant)' : r._geoSrc === 'hud' ? ' (HUD pre-geocoded)' : '';
   const geoLabel = r.noAddr ? 'currently insured — HUD\'s address file hasn\'t added this property\'s street address yet, so this is a ZIP-code-level location'
                   : r._geo === 'exact' ? 'exact street address' + srcLabel
                   : r._geo === 'manual' ? 'manually corrected location'
