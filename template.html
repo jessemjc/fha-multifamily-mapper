@@ -360,7 +360,13 @@
     font-size:15px;
     color:#c9962b;
     box-shadow:0 1px 5px rgba(0,0,0,0.45);
-  }
+  }  .dsec{padding:0.85rem 1.1rem;border-bottom:1px solid var(--line);}
+  .dh{font-size:11px;font-weight:600;color:var(--ink-soft);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.03em;}
+  .drow{display:grid;grid-template-columns:1fr auto;align-items:baseline;column-gap:8px;font-size:13px;margin-bottom:6px;}
+  .dl{color:var(--ink-soft);}
+  .dmut{color:var(--ink-soft);font-size:11px;}
+  .ddatebadge{font-size:10px;color:var(--ink-soft);background:var(--accent-soft);padding:2px 8px;border-radius:3px;white-space:nowrap;}
+  .dclose{cursor:pointer;color:var(--ink-soft);font-size:18px;background:none;border:none;padding:0;}
 </style>
 </head>
 <body>
@@ -511,6 +517,23 @@
 
       <div class="divider"></div>
 
+      <h2>Client group</h2>
+      <div class="dropdown" id="cgDropdown">
+        <button type="button" class="dropdown-btn" id="cgDropdownBtn">
+          <span id="cgDropdownLabel">All client groups</span><span class="dropdown-caret">▾</span>
+        </button>
+        <div class="dropdown-panel" id="cgDropdownPanel">
+          <label><input type="checkbox" class="cgCheck" value="Family" checked> Family</label>
+          <label><input type="checkbox" class="cgCheck" value="Elderly" checked> Elderly</label>
+          <label><input type="checkbox" class="cgCheck" value="Health Care" checked> Health Care</label>
+          <label><input type="checkbox" class="cgCheck" value="Disabled" checked> Disabled</label>
+          <label><input type="checkbox" class="cgCheck" value="none" checked> No data</label>
+        </div>
+      </div>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">All checked by default, including "No data" — this tracking system mostly doesn't cover nursing/healthcare facilities, so leaving it unchecked would hide real properties, not just ones genuinely lacking a client group.</p>
+
+      <div class="divider"></div>
+
       <h2>Subsidized</h2>
       <div class="tristate-row">
         <div class="tristate" data-filter="sub">
@@ -606,6 +629,10 @@
       </div>
     </div>
   </div>
+</div>
+
+<div id="detailOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:2000; align-items:center; justify-content:center;">
+  <div id="detailPanel" style="background:#fff; border-radius:10px; width:560px; max-width:92vw; max-height:88vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.3);"></div>
 </div>
 
 <script type="application/json" id="propData">
@@ -813,8 +840,10 @@ function runDrawnAreaSearch(polygonPoints, drawShape){
 
   const types = activeBusinessTypes();
   const finGroups = activeFinancingGroups();
+  const cgGroups = activeClientGroups();
   if(types.size === 0){ setStatus('Check at least one property type.', true); return; }
   if(finGroups.size === 0){ setStatus('Check at least one financing type.', true); return; }
+  if(cgGroups.size === 0){ setStatus('Check at least one client group.', true); return; }
 
   const results = PROPS.filter(p => {
     if(p.la == null || p.lo == null) return false;
@@ -822,6 +851,7 @@ function runDrawnAreaSearch(polygonPoints, drawShape){
     if(!passesFinancingFilter(p, finGroups)) return false;
     if(!passesTriStateFilters(p)) return false;
     if(!passesPendingFilter(p)) return false;
+    if(!passesClientGroupFilter(p, cgGroups)) return false;
     return pointInPolygon([p.la, p.lo], polygonPoints);
   });
 
@@ -1003,6 +1033,15 @@ function passesFinancingFilter(p, groups){
   if(p.bt !== 'R' || p.pending || p.noAddr) return true; // bucket scheme only applies to closed, address-matched residential deals; pending/pipeline deals, no-address deals, and non-residential types are all exempt
   return groups.has(p.grp);
 }
+function activeClientGroups(){
+  const set = new Set();
+  document.querySelectorAll('.cgCheck').forEach(cb => { if(cb.checked) set.add(cb.value); });
+  return set;
+}
+function passesClientGroupFilter(p, groups){
+  if(p.pending) return true; // pipeline/catching-up deals aren't in this tracking system at all — never filtered out by it
+  return groups.has(p.cgType || 'none');
+}
 
 /* ---------- TRI-STATE FILTERS (Subsidized / Section 8 / Use Restriction / Tax Credit / Tax-Exempt Bond) ---------- */
 function getTristateValue(filterKey){
@@ -1130,10 +1169,20 @@ function updateFinLabel(){
     : `${checkedCount} of ${total} selected`;
   document.getElementById('finDropdownLabel').textContent = label;
 }
+function updateCgLabel(){
+  const total = document.querySelectorAll('.cgCheck').length;
+  const checkedCount = document.querySelectorAll('.cgCheck:checked').length;
+  const label = checkedCount === 0 ? 'None selected'
+    : checkedCount === total ? 'All client groups'
+    : `${checkedCount} of ${total} selected`;
+  document.getElementById('cgDropdownLabel').textContent = label;
+}
 setupDropdown('btDropdown','btDropdownBtn','btDropdownPanel', updateBtLabel);
 setupDropdown('finDropdown','finDropdownBtn','finDropdownPanel', updateFinLabel);
+setupDropdown('cgDropdown','cgDropdownBtn','cgDropdownPanel', updateCgLabel);
 document.getElementById('btDropdownPanel').addEventListener('change', () => showUpdateFiltersButtonIfSearched());
 document.getElementById('finDropdownPanel').addEventListener('change', () => showUpdateFiltersButtonIfSearched());
+document.getElementById('cgDropdownPanel').addEventListener('change', () => showUpdateFiltersButtonIfSearched());
 
 
 /* ============================================================
@@ -1594,9 +1643,186 @@ function bindPropertyPopup(marker, r){
     `Mortgage: ${fmtMoney(r.m)} · Balance: ${fmtMoney(r.bal)}<br>` +
     `Holder: ${escapeHtml(r.h) || '—'}<br>` +
     `<em>${geoLabel}</em><br>` +
-    `<a href="#" onclick="armFix('${r.f}'); return false;" style="font-size:11.5px;">📍 Fix this location on the map</a></div>`,
+    `<a href="#" onclick="armFix('${r.f}'); return false;" style="font-size:11.5px;">📍 Fix this location on the map</a><br>` +
+    `<a href="#" onclick="openDetailView('${r.f}'); return false;" style="font-size:11.5px;">📄 View full details</a></div>`,
     {autoPan: false}
   );
+}
+
+/* ============================================================
+   EXPANDED PROPERTY DETAIL VIEW
+   The rich REAC/financial/tenant/management data lives in a separate
+   file (property_details.json, ~20MB) fetched only the first time
+   anyone opens a detail view — not on initial page load — so everyday
+   map/search use never pays that download cost.
+   ============================================================ */
+let PROPERTY_DETAILS = null;
+let propertyDetailsLoading = null;
+async function loadPropertyDetails(){
+  if(PROPERTY_DETAILS) return PROPERTY_DETAILS;
+  if(propertyDetailsLoading) return propertyDetailsLoading;
+  propertyDetailsLoading = fetch('property_details.json')
+    .then(r => r.json())
+    .then(data => { PROPERTY_DETAILS = data; return data; })
+    .catch(err => { console.error('Could not load property details:', err); return {}; });
+  return propertyDetailsLoading;
+}
+
+function fmtPct(v){ return v === null || v === undefined ? null : `${Number(v).toFixed(1)}%`; }
+function fmtNum(v){ return v === null || v === undefined ? null : Number(v).toLocaleString(); }
+
+function detailRow(label, value, dateNote){
+  const v = (value === null || value === undefined || value === '') ? '—' : value;
+  const note = dateNote ? `<div class="drow" style="margin-top:-4px;margin-bottom:6px;"><span class="dl" style="grid-column:1/3;font-size:11px;color:var(--ink-soft);">${dateNote}</span></div>` : '';
+  return `<div class="drow"><span class="dl">${label}</span><span>${v}</span></div>${note}`;
+}
+
+window.openDetailView = async function(fha){
+  const overlay = document.getElementById('detailOverlay');
+  const panel = document.getElementById('detailPanel');
+  const r = PROPS.find(p => p.f === fha);
+  if(!r){ return; }
+
+  panel.innerHTML = `<div style="padding:2rem;text-align:center;color:var(--ink-soft);">Loading full property details…</div>`;
+  overlay.style.display = 'flex';
+
+  const allDetails = await loadPropertyDetails();
+  const d = allDetails[fha] || {};
+  renderDetailPanel(r, d);
+}
+
+window.closeDetailView = function(){
+  document.getElementById('detailOverlay').style.display = 'none';
+}
+document.getElementById('detailOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'detailOverlay') closeDetailView();
+});
+
+function renderDetailPanel(r, d){
+  const panel = document.getElementById('detailPanel');
+  const flags = flagsSummary(r);
+
+  let html = `<div style="padding:1rem 1.25rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:start;">
+    <div>
+      <p style="font-weight:700;font-size:16px;margin:0;color:var(--ink);">${escapeHtml(r.n)}</p>
+      <p style="font-size:13px;color:var(--ink-soft);margin:2px 0 0;">${escapeHtml(r.a)}, ${escapeHtml(r.c)}${r.county ? ', ' + escapeHtml(shortCounty(r.county)) : ''}, ${r.s} ${r.z}</p>
+    </div>
+    <button class="dclose" onclick="closeDetailView()" aria-label="Close">&times;</button>
+  </div>`;
+
+  html += `<div class="dsec"><p class="dh">Identity and location</p>`;
+  html += detailRow('FHA number', r.f);
+  html += detailRow('SOA code', d.soaCode);
+  html += detailRow('SOA description', d.soaDesc ? escapeHtml(d.soaDesc) : null);
+  html += detailRow('Primary FHA case', d.isPrimaryFha === true ? 'Yes' : d.isPrimaryFha === false ? 'No' : null);
+  html += detailRow('County', r.county ? escapeHtml(shortCounty(r.county)) + ' <span class="dmut">(derived from zip)</span>' : null);
+  html += detailRow('Congressional district', d.congDist);
+  html += detailRow('Metro area', d.msa ? escapeHtml(d.msa) : null);
+  const geoPrecision = r.hgeo ? 'Rooftop/ZIP+4 (HUD geocoded)' : r._geo === 'exact' ? 'Exact street address' : r._geo === 'manual' ? 'Manually corrected' : r._geo === 'approx' || r.noAddr ? 'ZIP-level (approximate)' : 'Not yet located';
+  html += detailRow('Location precision', geoPrecision);
+  html += `</div>`;
+
+  html += `<div class="dsec"><p class="dh">Financing</p>`;
+  html += detailRow('Original mortgage', fmtMoney(r.m));
+  html += detailRow('Amortized balance', fmtMoney(r.bal));
+  html += detailRow('Current principal and interest', d.currPI !== null && d.currPI !== undefined ? fmtMoney(d.currPI) + ' / mo' : null);
+  html += detailRow('Initial endorsed', r.e);
+  html += detailRow('Final endorsed', r.fe);
+  html += detailRow('Holder', r.h ? escapeHtml(r.h) + (d.holderCity ? ', ' + escapeHtml(d.holderCity) + ' ' + escapeHtml(d.holderState||'') : '') : null);
+  html += detailRow('Servicer', d.servicer ? escapeHtml(d.servicer) + (d.servicerCity ? ', ' + escapeHtml(d.servicerCity) + ' ' + escapeHtml(d.servicerState||'') : '') : null);
+  html += `</div>`;
+
+  html += `<div class="dsec"><p class="dh">Subsidy, program flags, and unit mix</p>`;
+  html += detailRow('Subsidized', r.sub === true ? 'Yes' : r.sub === false ? 'No' : null);
+  html += detailRow('Section 8', r.sec8 === true ? 'Yes' : r.sec8 === false ? 'No' : null);
+  html += detailRow('Use restriction', r.restr === true ? 'Yes' : r.restr === false ? 'No' : null);
+  html += detailRow('Service agreement', d.svcAgreement === true ? 'Yes' : d.svcAgreement === false ? 'No' : null);
+  html += detailRow('Total units', r.u);
+  html += detailRow('Assisted units', d.assistedUnits);
+  html += detailRow('Under Sec 8 contract', d.maxContractUnits);
+  if(d.contractExp){
+    html += `<div class="drow" style="margin-top:-4px;"><span class="dl" style="grid-column:1/3;font-size:11px;color:var(--ink-soft);">Contract expires ${escapeHtml(d.contractExp)}</span></div>`;
+  }
+  html += detailRow('Market-rent units', d.mktRentUnits);
+  html += detailRow('First occupied', d.occDate);
+  html += detailRow('Tax credit (LIHTC)', r.tc ? 'Yes' : 'No');
+  html += detailRow('Tax-exempt bond', r.te ? 'Yes' : 'No');
+  html += `</div>`;
+
+  html += `<div class="dsec"><p class="dh">Firm commitment history</p>`;
+  if(r.pending){
+    html += detailRow('Status', escapeHtml(r.pendingStatus || ''));
+    html += detailRow('Firm commitment date', r.fcDate);
+  } else if(d.fcStatus || d.fcDate){
+    html += detailRow('Status', escapeHtml(d.fcStatus || ''));
+    html += detailRow('Firm commitment date', d.fcDate);
+    html += detailRow('Program category', d.fcCategory ? escapeHtml(d.fcCategory) : null);
+    html += detailRow('Lender at firm activity', d.fcLender ? escapeHtml(d.fcLender) : null);
+    html += detailRow('HOME funds', d.fcHome ? 'Yes' : 'No');
+    html += detailRow('CDBG', d.fcCdbg ? 'Yes' : 'No');
+    html += detailRow('Refi of 202', d.fcRefi202 ? 'Yes' : 'No');
+    html += detailRow('IRP decoupling', d.fcIrp ? 'Yes' : 'No');
+    html += detailRow('Hope VI', d.fcHopeVI ? 'Yes' : 'No');
+  } else {
+    html += `<p style="font-size:12px;color:var(--ink-soft);margin:0;">No firm commitment history found for this FHA number.</p>`;
+  }
+  html += `</div>`;
+
+  if(!r.pending){
+    html += `<div class="dsec"><div style="display:flex;justify-content:space-between;align-items:baseline;"><p class="dh" style="margin:0 0 8px;">Condition and risk</p>${d.reacDate ? `<span class="ddatebadge">inspected ${escapeHtml(d.reacDate)}</span>` : ''}</div>`;
+    html += detailRow('REAC score', d.reacScore !== null && d.reacScore !== undefined ? `${d.reacScore} / 100` : null);
+    html += detailRow('Default / delinquent', d.default === true ? 'Yes' : d.default === false ? 'No' : null);
+    html += `</div>`;
+
+    html += `<div class="dsec"><div style="display:flex;justify-content:space-between;align-items:baseline;"><p class="dh" style="margin:0 0 8px;">Financial performance</p>${d.fassDate ? `<span class="ddatebadge">statement closed ${escapeHtml(d.fassDate)}</span>` : ''}</div>`;
+    html += detailRow('Annual expenses (current)', fmtMoney(d.expCurr));
+    html += detailRow('Annual expenses (prior yr)', fmtMoney(d.expPrev));
+    html += detailRow('HUD performance rating', d.fassRating ? escapeHtml(d.fassRating) : null);
+    html += `</div>`;
+
+    const hasTenantData = d.occMonths !== null && d.occMonths !== undefined;
+    html += `<div class="dsec"><div style="display:flex;justify-content:space-between;align-items:baseline;"><p class="dh" style="margin:0 0 8px;">Tenant profile and household composition</p>${hasTenantData ? `<span class="ddatebadge">~ ${d.occMonths} mo old</span>` : ''}</div>`;
+    if(hasTenantData){
+      html += detailRow('Occupancy', fmtPct(d.occPct));
+      html += detailRow('Client group', d.cgName ? escapeHtml(d.cgName) : (r.cgType || '—'));
+      html += detailRow('Elderly residents', fmtPct(d.eldPct));
+      html += detailRow('Median household income', fmtMoney(d.medInc));
+      html += detailRow('Rent per month', fmtMoney(d.rentMo));
+      html += detailRow('Rent vs fair market rent', fmtPct(d.rentFmr));
+      const race = [];
+      if(d.pctBlack !== null && d.pctBlack !== undefined) race.push(`${d.pctBlack.toFixed(0)}% Black`);
+      if(d.pctHisp !== null && d.pctHisp !== undefined) race.push(`${d.pctHisp.toFixed(0)}% Hispanic`);
+      if(d.pctAsian !== null && d.pctAsian !== undefined) race.push(`${d.pctAsian.toFixed(0)}% Asian`);
+      if(d.pctNative !== null && d.pctNative !== undefined) race.push(`${d.pctNative.toFixed(0)}% Native Am.`);
+      html += detailRow('Race / ethnicity mix', race.length ? race.join(', ') : null);
+      html += detailRow('People per unit', d.peoplePerUnit);
+      html += detailRow('1-adult households', fmtPct(d.pct1Adult));
+      html += detailRow('Female-headed households', fmtPct(d.pctFemaleHead));
+      html += detailRow('Children on-site', d.childrenCnt);
+      html += detailRow('Months on waiting list', d.monthsWaiting);
+      html += detailRow('Median months since move-in', d.monthsMovein);
+    } else {
+      html += `<p style="font-size:12px;color:var(--ink-soft);margin:0;">No tenant data available — usually because the reporting sample was too small (10 units or fewer), which HUD suppresses for privacy.</p>`;
+      html += detailRow('Client group', r.cgType || '—');
+    }
+    html += `</div>`;
+
+    html += `<div class="dsec"><p class="dh">Property management</p>`;
+    html += detailRow('Management agent', d.mgmtAgent ? escapeHtml(d.mgmtAgent) : null);
+    html += detailRow('Contact', d.mgmtContact ? escapeHtml(d.mgmtContact) + (d.mgmtTitle ? ', ' + escapeHtml(d.mgmtTitle) : '') : null);
+    html += detailRow('Email', d.mgmtEmail ? escapeHtml(d.mgmtEmail) : null);
+    html += detailRow('Phone', d.mgmtPhone ? escapeHtml(d.mgmtPhone) : null);
+    html += detailRow('On-site phone', d.onSitePhone ? escapeHtml(d.onSitePhone) : null);
+    html += `</div>`;
+
+    html += `<div class="dsec"><p class="dh">HUD contacts</p>`;
+    html += detailRow('HUD field office', d.hub ? escapeHtml(d.hub) : null);
+    html += detailRow('Servicing site', d.servSite ? escapeHtml(d.servSite) : null);
+    html += detailRow('Project manager', d.projMgr ? escapeHtml(d.projMgr) : null);
+    html += `</div>`;
+  }
+
+  panel.innerHTML = html;
 }
 
 /* ---------- MARKERS: always show individual numbers. When enabled,
@@ -1776,6 +2002,7 @@ function buildTable(){
     {key:'m', label:'Mortgage $'},
     {key:'bal', label:'Amort Balance $'},
     {key:'fl', label:'Financing Type'},
+    {key:'cgType', label:'Client Group'},
     {key:'_flags', label:'Flags'},
     {key:'f', label:'FHA #'},
   ];
@@ -2054,6 +2281,7 @@ async function runRadiusSearchFromPoint(point, label){
   if(!radius || radius <= 0){ setStatus('Enter a valid radius in miles.', true); return; }
   if(activeBusinessTypes().size === 0){ setStatus('Check at least one property type.', true); return; }
   if(activeFinancingGroups().size === 0){ setStatus('Check at least one financing type.', true); return; }
+  if(activeClientGroups().size === 0){ setStatus('Check at least one client group.', true); return; }
 
   const btn = document.getElementById('searchBtn');
   btn.disabled = true;
@@ -2067,6 +2295,7 @@ async function runRadiusSearchFromPoint(point, label){
     const buffer = 25;
     const types = activeBusinessTypes();
     const finGroups = activeFinancingGroups();
+    const cgGroups = activeClientGroups();
     setStatus('Scanning candidates within ' + (radius+buffer) + ' mi (zip-level)…');
     let candidates = PROPS
       .filter(p => p.la != null && p.lo != null)
@@ -2074,6 +2303,7 @@ async function runRadiusSearchFromPoint(point, label){
       .filter(p => passesFinancingFilter(p, finGroups))
       .filter(p => passesTriStateFilters(p))
       .filter(p => passesPendingFilter(p))
+      .filter(p => passesClientGroupFilter(p, cgGroups))
       .map(p => applyOverride({...p, _dist: haversineMiles(point.lat, point.lon, p.la, p.lo)}))
       .filter(p => p._dist <= radius + buffer)
       .sort((a,b) => a._dist - b._dist);
@@ -2162,6 +2392,7 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
   const county = countyRaw.toLowerCase();
   const types = activeBusinessTypes();
   const finGroups = activeFinancingGroups();
+  const cgGroups = activeClientGroups();
 
   if(types.size === 0){
     setStatus('Check at least one property type.', true);
@@ -2169,6 +2400,10 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
   }
   if(finGroups.size === 0){
     setStatus('Check at least one financing type.', true);
+    return;
+  }
+  if(cgGroups.size === 0){
+    setStatus('Check at least one client group.', true);
     return;
   }
   if(!state && !city && !zip && !county){
@@ -2180,6 +2415,7 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
     if(!passesTypeFilter(p, types)) return false;
     if(!passesFinancingFilter(p, finGroups)) return false;
     if(!passesTriStateFilters(p)) return false;
+    if(!passesClientGroupFilter(p, cgGroups)) return false;
     if(!passesPendingFilter(p)) return false;
     if(state && p.s !== state) return false;
     if(city && !p.c.toLowerCase().includes(city)) return false;

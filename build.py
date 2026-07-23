@@ -123,7 +123,8 @@ df2['proj_num'] = df2['HUD PROJECT NUMBER'].astype(str).str.strip().str.zfill(8)
 
 # Only keep df2 columns we need for enrichment (avoid dup city/state/zip - use df1's address data as primary)
 df2_small = df2[['proj_num','UNITS','INITIAL ENDORSEMENT DATE','FINAL ENDORSEMENT DATE',
-                  'ORIGINAL MORTGAGE AMOUNT','AMORITIZED PRINCIPAL BALANCE','HOLDER NAME','HOLDER CITY','HOLDER STATE',
+                  'ORIGINAL MORTGAGE AMOUNT','AMORITIZED PRINCIPAL BALANCE','CURRENT PRINCIPAL AND INTEREST',
+                  'HOLDER NAME','HOLDER CITY','HOLDER STATE','SERVICER NAME','SERVICER CITY','SERVICER STATE',
                   'SECTION OF ACT CODE','SOA CATEGORY/SUB CATEGORY','BUSINESS_TYPE',
                   'TC','TE']].copy()
 BT_CODE = {'MF Residential':'R', 'MF Healthcare':'H', 'MF Hospitals':'P'}
@@ -134,7 +135,9 @@ sheet2 = pd.read_excel(f3, sheet_name='All active Properties with FHA ')
 sheet2['fha_number'] = sheet2['fha_number'].astype(str).str.strip().str.zfill(8)
 portfolio = sheet1.merge(sheet2[['property_id','fha_number']], on='property_id', how='inner')
 portfolio = portfolio[portfolio['is_insured_ind'] == 'Y']
-portfolio = portfolio[['fha_number','is_subsidized_ind','is_sec8_ind','has_use_restriction_ind']].drop_duplicates(subset='fha_number')
+portfolio = portfolio[['fha_number','is_subsidized_ind','is_sec8_ind','has_use_restriction_ind',
+                       'congressional_district_code','msa_name_text','has_service_agreement_ind',
+                       'occupancy_date','total_assisted_unit_count']].drop_duplicates(subset='fha_number')
 
 # --- Financing-type bucket scheme (residential properties only) ---
 BUCKET_OF = {}
@@ -247,25 +250,105 @@ def fetch_arcgis_layer(base_url, out_fields, where="1=1", page_size=2000, max_pa
         offset += page_size
     return all_features
 
+ARCGIS_FIELDS = (
+    "PRIMARY_FHA_NUMBER,LAT,LON,LVL2KX,"
+    "CLIENT_GROUP_TYPE,CLIENT_GROUP_NAME,ELDLY_PRCNT,"
+    "REAC_LAST_INSPECTION_SCORE,REAC_LAST_INSPECTION_DATE,IS_IN_DEFAULT_DELINQUENT_IND,"
+    "ANNL_EXPNS_AMNT,ANNL_EXPNS_AMNT_PREV_YR,FASS_LAST_PERFORMANCE_VALUE,FASS_LAST_AFS_CLOSED_DATE,"
+    "PCT_OCCUPIED,MONTHS_SINCE_REPORT,MEDIAN_INC_AMNT,RENT_PER_MONTH,RENT_TO_FMR_RATIO1,"
+    "PCT_BLACK,PCT_HISPANIC,PCT_ASIAN,PCT_NATIVE_AMERICAN,"
+    "PEOPLE_PER_UNIT,PCT_1ADULT,PCT_2ADULTS,PCT_FEMALE_HEAD,CHLDRN_MBR_CNT,"
+    "MONTHS_WAITING,MONTHS_FROM_MOVEIN,"
+    "MAXIMUM_CONTRACT_UNIT_COUNT,UNIT_MRKT_RENT_CNT,EXPIRATION_DATE1,"
+    "MGMT_AGENT_ORG_NAME,MGMT_CONTACT_FULL_NAME,MGMT_CONTACT_INDV_TITLE_TEXT,"
+    "MGMT_CONTACT_EMAIL_TEXT,MGMT_CONTACT_MAIN_PHN_NBR,PROPERTY_ON_SITE_PHONE_NUMBER,"
+    "HUB_NAME_TEXT,SERVICING_SITE_NAME_TEXT,PROJECT_MANAGER_NAME_TEXT"
+)
+
+def sup(val):
+    """Treat HUD's -4 privacy-suppression placeholder as missing."""
+    if val is None or val == -4:
+        return None
+    return val
+
+def arcgis_date(ms):
+    if ms is None:
+        return ''
+    try:
+        return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
+    except Exception:
+        return ''
+
 hud_geocode_lookup = {}
+hud_detail_lookup = {}
 try:
-    features = fetch_arcgis_layer(ARCGIS_BASE, "PRIMARY_FHA_NUMBER,LAT,LON,LVL2KX")
+    features = fetch_arcgis_layer(ARCGIS_BASE, ARCGIS_FIELDS)
     print(f"Fetched {len(features)} records from HUD's ArcGIS geocoding layer.")
+    seen_fha = set()
     for feat in features:
         attrs = feat.get("attributes", {})
-        if attrs.get("LVL2KX") not in ("R", "4"):
-            continue
         fha_raw = attrs.get("PRIMARY_FHA_NUMBER")
-        lat_val = attrs.get("LAT")
-        lon_val = attrs.get("LON")
-        if fha_raw is None or lat_val is None or lon_val is None:
+        if fha_raw is None:
             continue
         fha8 = str(fha_raw).strip().zfill(8)
-        hud_geocode_lookup[fha8] = (float(lat_val), float(lon_val))
+        if fha8 in seen_fha:
+            continue
+        seen_fha.add(fha8)
+
+        lat_val, lon_val = attrs.get("LAT"), attrs.get("LON")
+        if attrs.get("LVL2KX") in ("R", "4") and lat_val is not None and lon_val is not None:
+            hud_geocode_lookup[fha8] = (float(lat_val), float(lon_val))
+
+        months_since_report = attrs.get("MONTHS_SINCE_REPORT")
+        tenant_suppressed = months_since_report is None or months_since_report == -4
+        def tf(val):
+            return None if tenant_suppressed else sup(val)
+
+        hud_detail_lookup[fha8] = {
+            "cgType": attrs.get("CLIENT_GROUP_TYPE") or '',
+            "cgName": attrs.get("CLIENT_GROUP_NAME") or '',
+            "reacScore": sup(attrs.get("REAC_LAST_INSPECTION_SCORE")),
+            "reacDate": arcgis_date(attrs.get("REAC_LAST_INSPECTION_DATE")),
+            "default": (str(attrs.get("IS_IN_DEFAULT_DELINQUENT_IND")).strip().upper() == 'Y') if attrs.get("IS_IN_DEFAULT_DELINQUENT_IND") is not None else None,
+            "expCurr": sup(attrs.get("ANNL_EXPNS_AMNT")),
+            "expPrev": sup(attrs.get("ANNL_EXPNS_AMNT_PREV_YR")),
+            "fassRating": attrs.get("FASS_LAST_PERFORMANCE_VALUE") or '',
+            "fassDate": arcgis_date(attrs.get("FASS_LAST_AFS_CLOSED_DATE")),
+            "eldPct": tf(attrs.get("ELDLY_PRCNT")),
+            "occPct": tf(attrs.get("PCT_OCCUPIED")),
+            "occMonths": sup(months_since_report),
+            "medInc": tf(attrs.get("MEDIAN_INC_AMNT")),
+            "rentMo": tf(attrs.get("RENT_PER_MONTH")),
+            "rentFmr": tf(attrs.get("RENT_TO_FMR_RATIO1")),
+            "pctBlack": tf(attrs.get("PCT_BLACK")),
+            "pctHisp": tf(attrs.get("PCT_HISPANIC")),
+            "pctAsian": tf(attrs.get("PCT_ASIAN")),
+            "pctNative": tf(attrs.get("PCT_NATIVE_AMERICAN")),
+            "peoplePerUnit": tf(attrs.get("PEOPLE_PER_UNIT")),
+            "pct1Adult": tf(attrs.get("PCT_1ADULT")),
+            "pct2Adult": tf(attrs.get("PCT_2ADULTS")),
+            "pctFemaleHead": tf(attrs.get("PCT_FEMALE_HEAD")),
+            "childrenCnt": tf(attrs.get("CHLDRN_MBR_CNT")),
+            "monthsWaiting": sup(attrs.get("MONTHS_WAITING")),
+            "monthsMovein": sup(attrs.get("MONTHS_FROM_MOVEIN")),
+            "maxContractUnits": sup(attrs.get("MAXIMUM_CONTRACT_UNIT_COUNT")),
+            "mktRentUnits": sup(attrs.get("UNIT_MRKT_RENT_CNT")),
+            "contractExp": arcgis_date(attrs.get("EXPIRATION_DATE1")),
+            "mgmtAgent": attrs.get("MGMT_AGENT_ORG_NAME") or '',
+            "mgmtContact": attrs.get("MGMT_CONTACT_FULL_NAME") or '',
+            "mgmtTitle": attrs.get("MGMT_CONTACT_INDV_TITLE_TEXT") or '',
+            "mgmtEmail": attrs.get("MGMT_CONTACT_EMAIL_TEXT") or '',
+            "mgmtPhone": attrs.get("MGMT_CONTACT_MAIN_PHN_NBR") or '',
+            "onSitePhone": attrs.get("PROPERTY_ON_SITE_PHONE_NUMBER") or '',
+            "hub": attrs.get("HUB_NAME_TEXT") or '',
+            "servSite": attrs.get("SERVICING_SITE_NAME_TEXT") or '',
+            "projMgr": attrs.get("PROJECT_MANAGER_NAME_TEXT") or '',
+        }
     print(f"HUD pre-geocoded coordinates loaded for {len(hud_geocode_lookup)} FHA numbers (rooftop/ZIP+4 accuracy only).")
+    print(f"HUD detail-view data loaded for {len(hud_detail_lookup)} FHA numbers.")
 except Exception as e:
-    print(f"Could not fetch HUD's ArcGIS geocoding layer ({e}) — skipping pre-geocoding enhancement this run "
-          f"(all properties will use the normal live-geocoding flow instead).")
+    print(f"Could not fetch HUD's ArcGIS geocoding layer ({e}) — skipping pre-geocoding and detail-view enhancements this run "
+          f"(all properties will use the normal live-geocoding flow, no expanded detail data).")
 
 # Pull the layer's own "Data Last Edit Date" from its metadata (a clean
 # JSON field, not text-scraped) to show how current this source is.
@@ -286,6 +369,7 @@ def clean_zip(z):
     return s.zfill(5)[:5] if s else ''
 
 records = []
+details = {}  # fha_number -> expanded detail-view fields, written to a separate file
 no_geo = 0
 hud_geocoded_count = 0
 for _, row in merged.iterrows():
@@ -369,6 +453,23 @@ for _, row in merged.iterrows():
         rec['grp'] = ''
         rec['fl'] = rec['so']
     records.append(rec)
+
+    details[rec['f']] = {
+        "currPI": round(float(row['CURRENT PRINCIPAL AND INTEREST'])) if pd.notna(row['CURRENT PRINCIPAL AND INTEREST']) else None,
+        "holderCity": str(row['HOLDER CITY']).strip() if pd.notna(row['HOLDER CITY']) else '',
+        "holderState": str(row['HOLDER STATE']).strip() if pd.notna(row['HOLDER STATE']) else '',
+        "servicer": str(row['SERVICER NAME']).strip() if pd.notna(row['SERVICER NAME']) else '',
+        "servicerCity": str(row['SERVICER CITY']).strip() if pd.notna(row['SERVICER CITY']) else '',
+        "servicerState": str(row['SERVICER STATE']).strip() if pd.notna(row['SERVICER STATE']) else '',
+        "soaCode": str(row['soa_code']).strip() if pd.notna(row['soa_code']) else '',
+        "soaDesc": str(row['soa_description_text']).strip() if pd.notna(row['soa_description_text']) else '',
+        "isPrimaryFha": (str(row['is_primary_fha_ind']).strip().upper() == 'Y') if pd.notna(row['is_primary_fha_ind']) else None,
+        "congDist": str(row.get('congressional_district_code')).strip() if pd.notna(row.get('congressional_district_code')) else '',
+        "msa": str(row.get('msa_name_text')).strip() if pd.notna(row.get('msa_name_text')) else '',
+        "svcAgreement": yn(row.get('has_service_agreement_ind')),
+        "occDate": (lambda d: pd.to_datetime(d).strftime('%Y-%m-%d') if pd.notna(d) else '')(row.get('occupancy_date')),
+        "assistedUnits": int(row['total_assisted_unit_count']) if pd.notna(row.get('total_assisted_unit_count')) else None,
+    }
 
 print("Records without geocoding (bad/missing zip):", no_geo, "of", len(records))
 print(f"Records using HUD's pre-geocoded rooftop/ZIP+4 coordinates: {hud_geocoded_count} of {len(records)}")
@@ -480,6 +581,7 @@ FACILITY_TO_BT = {
     'Hospital': 'P',
 }
 
+fc = None
 if firm_commitments_path:
     try:
         city_lat = _defaultdict(list)
@@ -636,6 +738,68 @@ if firm_commitments_path:
     except Exception as e:
         print(f"Could not process Firm Commitments file ({e}) — skipping pipeline deals (main dataset unaffected).")
 
+# ============================================================
+# FIRM COMMITMENT HISTORY FOR EVERY PROPERTY (not just pipeline deals)
+# Every FHA-insured property had a firm commitment at some point — this
+# adds that origination history to properties that have ALREADY closed
+# too, not just the not-yet-closed ones. Reuses the Firm Commitments
+# sheet already loaded above. Where a property has multiple firm-activity
+# rows over time, the most recent one is used.
+# ============================================================
+fc_history_lookup = {}
+if fc is not None:
+    try:
+        fc_hist = fc.copy()
+        fc_hist['fha8'] = fc_hist['FHA Number'].astype(str).str.strip().str.zfill(8)
+        fc_hist['_activity_date'] = pd.to_datetime(fc_hist['Firm Activity Date'], errors='coerce')
+        fc_hist = fc_hist.sort_values('_activity_date').drop_duplicates(subset='fha8', keep='last')
+        for _, hrow in fc_hist.iterrows():
+            date_str = ''
+            if pd.notna(hrow['_activity_date']):
+                date_str = hrow['_activity_date'].strftime('%Y-%m-%d')
+            fc_history_lookup[hrow['fha8']] = {
+                "fcStatus": str(hrow['Current Status']).strip() if pd.notna(hrow['Current Status']) else '',
+                "fcDate": date_str,
+                "fcCategory": str(hrow['Program Category']).strip() if pd.notna(hrow['Program Category']) else '',
+                "fcLender": str(hrow['Lender Name for Firm Activity']).strip() if pd.notna(hrow['Lender Name for Firm Activity']) else '',
+                "fcHome": bool(pd.notna(hrow.get('Home'))),
+                "fcCdbg": bool(pd.notna(hrow.get('CDBG'))),
+                "fcRefi202": bool(pd.notna(hrow.get('Refi 202'))),
+                "fcIrp": bool(pd.notna(hrow.get('IRP Decoupling'))),
+                "fcHopeVI": bool(pd.notna(hrow.get('Hope VI'))),
+            }
+        applied = 0
+        for r in records:
+            if r.get('pending'):
+                continue
+            hist = fc_history_lookup.get(r['f'])
+            if hist:
+                details.setdefault(r['f'], {}).update(hist)
+                applied += 1
+        print(f"Firm commitment history added for {applied} already-closed properties.")
+    except Exception as e:
+        print(f"Could not build firm commitment history ({e}) — closed properties will show no firm commitment history.")
+
+# ============================================================
+# HUD DETAIL-VIEW DATA FOR EVERY PROPERTY
+# Kept in a separate file, fetched lazily only when someone opens a
+# property's expanded detail view. cgType is copied into the lean/main
+# record too, since it powers the Client Group filter and table column.
+# ============================================================
+detail_applied = 0
+for r in records:
+    if r.get('pending'):
+        r['cgType'] = ''
+        continue
+    detail = hud_detail_lookup.get(r['f'])
+    if detail:
+        details.setdefault(r['f'], {}).update(detail)
+        r['cgType'] = detail.get('cgType', '')
+        detail_applied += 1
+    else:
+        r['cgType'] = ''
+print(f"HUD detail-view data added for {detail_applied} properties (kept in the separate details file).")
+
 data_json = json.dumps(records)
 print("Records:", len(records), "| Embedded data size (MB):", round(len(data_json)/1024/1024, 2))
 
@@ -661,3 +825,7 @@ with open("index.html", "w", encoding="utf-8") as f:
     f.write(html)
 
 print(f"Wrote index.html ({len(html)/1024/1024:.2f} MB)")
+
+with open("property_details.json", "w", encoding="utf-8") as f:
+    json.dump(details, f)
+print(f"Wrote property_details.json ({len(details)} entries, {len(json.dumps(details))/1024/1024:.2f} MB)")
