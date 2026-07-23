@@ -367,6 +367,7 @@
   .dmut{color:var(--ink-soft);font-size:11px;}
   .ddatebadge{font-size:10px;color:var(--ink-soft);background:var(--accent-soft);padding:2px 8px;border-radius:3px;white-space:nowrap;}
   .dclose{cursor:pointer;color:var(--ink-soft);font-size:18px;background:none;border:none;padding:0;}
+  .dsrc{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;font-size:9px;font-weight:600;background:var(--accent-soft);color:var(--ink-soft);border:0.5px solid var(--line);}
 </style>
 </head>
 <body>
@@ -448,6 +449,15 @@
           <button id="cancelDrawBtn" type="button" style="flex:1;background:#fff;border:1px solid var(--line);color:var(--ink-soft);padding:8px;font-size:12px;border-radius:3px;">Cancel</button>
         </div>
       </div>
+
+      <div class="divider"></div>
+
+      <h2>Look up a specific property</h2>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-bottom:6px;">Search by property name or FHA number — finds the property directly, ignoring all filters below (Property type, Client group, Firm Commitment, etc).</p>
+      <div class="field">
+        <input type="text" id="lookupInput" placeholder="e.g. Hughes House or 11335988">
+      </div>
+      <button id="lookupBtn" type="button" style="width:100%; margin-top:8px; background:var(--accent); color:#fff; border:none; padding:8px; font-size:12px; font-weight:700; text-transform:uppercase; border-radius:3px;">Search</button>
 
       <div class="divider"></div>
 
@@ -1671,10 +1681,11 @@ async function loadPropertyDetails(){
 function fmtPct(v){ return v === null || v === undefined ? null : `${Number(v).toFixed(1)}%`; }
 function fmtNum(v){ return v === null || v === undefined ? null : Number(v).toLocaleString(); }
 
-function detailRow(label, value, dateNote){
+function detailRow(label, value, dateNote, source){
   const v = (value === null || value === undefined || value === '') ? '—' : value;
   const note = dateNote ? `<div class="drow" style="margin-top:-4px;margin-bottom:6px;"><span class="dl" style="grid-column:1/3;font-size:11px;color:var(--ink-soft);">${dateNote}</span></div>` : '';
-  return `<div class="drow"><span class="dl">${label}</span><span>${v}</span></div>${note}`;
+  const src = source ? `<span class="dsrc">${source}</span>` : '<span></span>';
+  return `<div class="drow" style="grid-template-columns:1fr auto 16px;"><span class="dl">${label}</span><span>${v}</span>${src}</div>${note}`;
 }
 
 window.openDetailView = async function(fha){
@@ -1711,58 +1722,53 @@ function renderDetailPanel(r, d){
   </div>`;
 
   html += `<div class="dsec"><p class="dh">Identity and location</p>`;
-  html += detailRow('FHA number', r.f);
-  html += detailRow('SOA code', d.soaCode);
-  html += detailRow('SOA description', d.soaDesc ? escapeHtml(d.soaDesc) : null);
-  html += detailRow('Primary FHA case', d.isPrimaryFha === true ? 'Yes' : d.isPrimaryFha === false ? 'No' : null);
+  html += detailRow('FHA number', r.f, null, 1);
+  html += detailRow('SOA code', d.soaCode, null, 1);
+  html += detailRow('SOA description', d.soaDesc ? escapeHtml(d.soaDesc) : null, null, 1);
+  html += detailRow('Primary FHA case', d.isPrimaryFha === true ? 'Yes' : d.isPrimaryFha === false ? 'No' : null, null, 1);
   html += detailRow('County', r.county ? escapeHtml(shortCounty(r.county)) + ' <span class="dmut">(derived from zip)</span>' : null);
-  html += detailRow('Congressional district', d.congDist);
-  html += detailRow('Metro area', d.msa ? escapeHtml(d.msa) : null);
+  html += detailRow('Congressional district', d.congDist, null, 3);
+  html += detailRow('Metro area', d.msa ? escapeHtml(d.msa) : null, null, 3);
   const geoPrecision = r.hgeo ? 'Rooftop/ZIP+4 (HUD geocoded)' : r._geo === 'exact' ? 'Exact street address' : r._geo === 'manual' ? 'Manually corrected' : r._geo === 'approx' || r.noAddr ? 'ZIP-level (approximate)' : 'Not yet located';
-  html += detailRow('Location precision', geoPrecision);
+  html += detailRow('Location precision', geoPrecision, null, r.hgeo ? 5 : null);
   html += `</div>`;
 
   html += `<div class="dsec"><p class="dh">Financing</p>`;
-  html += detailRow('Original mortgage', fmtMoney(r.m));
-  html += detailRow('Amortized balance', fmtMoney(r.bal));
-  html += detailRow('Current principal and interest', d.currPI !== null && d.currPI !== undefined ? fmtMoney(d.currPI) + ' / mo' : null);
-  html += detailRow('Initial endorsed', r.e);
-  html += detailRow('Final endorsed', r.fe);
-  html += detailRow('Holder', r.h ? escapeHtml(r.h) + (d.holderCity ? ', ' + escapeHtml(d.holderCity) + ' ' + escapeHtml(d.holderState||'') : '') : null);
-  html += detailRow('Servicer', d.servicer ? escapeHtml(d.servicer) + (d.servicerCity ? ', ' + escapeHtml(d.servicerCity) + ' ' + escapeHtml(d.servicerState||'') : '') : null);
+  html += detailRow('Original mortgage', fmtMoney(r.m), null, 2);
+  html += detailRow('Amortized balance', fmtMoney(r.bal), null, 2);
+  html += detailRow('Current principal and interest', d.currPI !== null && d.currPI !== undefined ? fmtMoney(d.currPI) + ' / mo' : null, null, 2);
+  html += detailRow('Initial endorsed', r.e, null, 2);
+  html += detailRow('Final endorsed', r.fe, null, 2);
+  html += detailRow('Holder', r.h ? escapeHtml(r.h) + (d.holderCity ? ', ' + escapeHtml(d.holderCity) + ' ' + escapeHtml(d.holderState||'') : '') : null, null, 2);
+  html += detailRow('Servicer', d.servicer ? escapeHtml(d.servicer) + (d.servicerCity ? ', ' + escapeHtml(d.servicerCity) + ' ' + escapeHtml(d.servicerState||'') : '') : null, null, 2);
   html += `</div>`;
 
-  html += `<div class="dsec"><p class="dh">Subsidy, program flags, and unit mix</p>`;
-  html += detailRow('Subsidized', r.sub === true ? 'Yes' : r.sub === false ? 'No' : null);
-  html += detailRow('Section 8', r.sec8 === true ? 'Yes' : r.sec8 === false ? 'No' : null);
-  html += detailRow('Use restriction', r.restr === true ? 'Yes' : r.restr === false ? 'No' : null);
-  html += detailRow('Service agreement', d.svcAgreement === true ? 'Yes' : d.svcAgreement === false ? 'No' : null);
-  html += detailRow('Total units', r.u);
-  html += detailRow('Assisted units', d.assistedUnits);
-  html += detailRow('Under Sec 8 contract', d.maxContractUnits);
-  if(d.contractExp){
-    html += `<div class="drow" style="margin-top:-4px;"><span class="dl" style="grid-column:1/3;font-size:11px;color:var(--ink-soft);">Contract expires ${escapeHtml(d.contractExp)}</span></div>`;
-  }
-  html += detailRow('Market-rent units', d.mktRentUnits);
-  html += detailRow('First occupied', d.occDate);
-  html += detailRow('Tax credit (LIHTC)', r.tc ? 'Yes' : 'No');
-  html += detailRow('Tax-exempt bond', r.te ? 'Yes' : 'No');
+  html += `<div class="dsec"><p class="dh">Subsidy and program flags</p>`;
+  html += detailRow('Subsidized', r.sub === true ? 'Yes' : r.sub === false ? 'No' : null, null, 3);
+  html += detailRow('Section 8', r.sec8 === true ? 'Yes' : r.sec8 === false ? 'No' : null, null, 3);
+  html += detailRow('Section 8 contract expires', d.contractExp || null, null, 5);
+  html += detailRow('Use restriction', r.restr === true ? 'Yes' : r.restr === false ? 'No' : null, null, 3);
+  html += detailRow('Service agreement', d.svcAgreement === true ? 'Yes' : d.svcAgreement === false ? 'No' : null, null, 3);
+  html += detailRow('Total units', r.u, null, 2);
+  html += detailRow('First occupied', d.occDate, null, 3);
+  html += detailRow('Tax credit (LIHTC)', r.tc ? 'Yes' : 'No', null, 2);
+  html += detailRow('Tax-exempt bond', r.te ? 'Yes' : 'No', null, 2);
   html += `</div>`;
 
   html += `<div class="dsec"><p class="dh">Firm commitment history</p>`;
   if(r.pending){
-    html += detailRow('Status', escapeHtml(r.pendingStatus || ''));
-    html += detailRow('Firm commitment date', r.fcDate);
+    html += detailRow('Status', escapeHtml(r.pendingStatus || ''), null, 4);
+    html += detailRow('Firm commitment date', r.fcDate, null, 4);
   } else if(d.fcStatus || d.fcDate){
-    html += detailRow('Status', escapeHtml(d.fcStatus || ''));
-    html += detailRow('Firm commitment date', d.fcDate);
-    html += detailRow('Program category', d.fcCategory ? escapeHtml(d.fcCategory) : null);
-    html += detailRow('Lender at firm activity', d.fcLender ? escapeHtml(d.fcLender) : null);
-    html += detailRow('HOME funds', d.fcHome ? 'Yes' : 'No');
-    html += detailRow('CDBG', d.fcCdbg ? 'Yes' : 'No');
-    html += detailRow('Refi of 202', d.fcRefi202 ? 'Yes' : 'No');
-    html += detailRow('IRP decoupling', d.fcIrp ? 'Yes' : 'No');
-    html += detailRow('Hope VI', d.fcHopeVI ? 'Yes' : 'No');
+    html += detailRow('Status', escapeHtml(d.fcStatus || ''), null, 4);
+    html += detailRow('Firm commitment date', d.fcDate, null, 4);
+    html += detailRow('Program category', d.fcCategory ? escapeHtml(d.fcCategory) : null, null, 4);
+    html += detailRow('Lender at firm activity', d.fcLender ? escapeHtml(d.fcLender) : null, null, 4);
+    html += detailRow('HOME funds', d.fcHome ? 'Yes' : 'No', null, 4);
+    html += detailRow('CDBG', d.fcCdbg ? 'Yes' : 'No', null, 4);
+    html += detailRow('Refi of 202', d.fcRefi202 ? 'Yes' : 'No', null, 4);
+    html += detailRow('IRP decoupling', d.fcIrp ? 'Yes' : 'No', null, 4);
+    html += detailRow('Hope VI', d.fcHopeVI ? 'Yes' : 'No', null, 4);
   } else {
     html += `<p style="font-size:12px;color:var(--ink-soft);margin:0;">No firm commitment history found for this FHA number.</p>`;
   }
@@ -1770,57 +1776,68 @@ function renderDetailPanel(r, d){
 
   if(!r.pending){
     html += `<div class="dsec"><div style="display:flex;justify-content:space-between;align-items:baseline;"><p class="dh" style="margin:0 0 8px;">Condition and risk</p>${d.reacDate ? `<span class="ddatebadge">inspected ${escapeHtml(d.reacDate)}</span>` : ''}</div>`;
-    html += detailRow('REAC score', d.reacScore !== null && d.reacScore !== undefined ? `${d.reacScore} / 100` : null);
-    html += detailRow('Default / delinquent', d.default === true ? 'Yes' : d.default === false ? 'No' : null);
+    html += detailRow('REAC score', d.reacScore !== null && d.reacScore !== undefined ? `${d.reacScore} / 100` : null, null, 5);
+    html += detailRow('Default / delinquent', d.default === true ? 'Yes' : d.default === false ? 'No' : null, null, 5);
     html += `</div>`;
 
     html += `<div class="dsec"><div style="display:flex;justify-content:space-between;align-items:baseline;"><p class="dh" style="margin:0 0 8px;">Financial performance</p>${d.fassDate ? `<span class="ddatebadge">statement closed ${escapeHtml(d.fassDate)}</span>` : ''}</div>`;
-    html += detailRow('Annual expenses (current)', fmtMoney(d.expCurr));
-    html += detailRow('Annual expenses (prior yr)', fmtMoney(d.expPrev));
-    html += detailRow('HUD performance rating', d.fassRating ? escapeHtml(d.fassRating) : null);
+    html += detailRow('Annual expenses (current)', fmtMoney(d.expCurr), null, 5);
+    html += detailRow('Annual expenses (prior yr)', fmtMoney(d.expPrev), null, 5);
+    html += detailRow('HUD performance rating', d.fassRating ? escapeHtml(d.fassRating) : null, null, 5);
     html += `</div>`;
 
     const hasTenantData = d.occMonths !== null && d.occMonths !== undefined;
     html += `<div class="dsec"><div style="display:flex;justify-content:space-between;align-items:baseline;"><p class="dh" style="margin:0 0 8px;">Tenant profile and household composition</p>${hasTenantData ? `<span class="ddatebadge">~ ${d.occMonths} mo old</span>` : ''}</div>`;
     if(hasTenantData){
-      html += detailRow('Occupancy', fmtPct(d.occPct));
-      html += detailRow('Client group', d.cgName ? escapeHtml(d.cgName) : (r.cgType || '—'));
-      html += detailRow('Elderly residents', fmtPct(d.eldPct));
-      html += detailRow('Median household income', fmtMoney(d.medInc));
-      html += detailRow('Rent per month', fmtMoney(d.rentMo));
-      html += detailRow('Rent vs fair market rent', fmtPct(d.rentFmr));
+      html += detailRow('Occupancy', fmtPct(d.occPct), null, 5);
+      html += detailRow('Client group', d.cgName ? escapeHtml(d.cgName) : (r.cgType || '—'), null, 5);
+      html += detailRow('Elderly residents', fmtPct(d.eldPct), null, 5);
+      html += detailRow('Median household income', fmtMoney(d.medInc), null, 5);
+      html += detailRow('Rent per month', fmtMoney(d.rentMo), null, 5);
+      html += detailRow('Rent vs fair market rent', fmtPct(d.rentFmr), null, 5);
       const race = [];
       if(d.pctBlack !== null && d.pctBlack !== undefined) race.push(`${d.pctBlack.toFixed(0)}% Black`);
       if(d.pctHisp !== null && d.pctHisp !== undefined) race.push(`${d.pctHisp.toFixed(0)}% Hispanic`);
       if(d.pctAsian !== null && d.pctAsian !== undefined) race.push(`${d.pctAsian.toFixed(0)}% Asian`);
       if(d.pctNative !== null && d.pctNative !== undefined) race.push(`${d.pctNative.toFixed(0)}% Native Am.`);
-      html += detailRow('Race / ethnicity mix', race.length ? race.join(', ') : null);
-      html += detailRow('People per unit', d.peoplePerUnit);
-      html += detailRow('1-adult households', fmtPct(d.pct1Adult));
-      html += detailRow('Female-headed households', fmtPct(d.pctFemaleHead));
-      html += detailRow('Children on-site', d.childrenCnt);
-      html += detailRow('Months on waiting list', d.monthsWaiting);
-      html += detailRow('Median months since move-in', d.monthsMovein);
+      html += detailRow('Race / ethnicity mix', race.length ? race.join(', ') : null, null, 5);
+      html += detailRow('People per unit', d.peoplePerUnit, null, 5);
+      html += detailRow('1-adult households', fmtPct(d.pct1Adult), null, 5);
+      html += detailRow('Female-headed households', fmtPct(d.pctFemaleHead), null, 5);
+      html += detailRow('Children on-site', d.childrenCnt, null, 5);
+      html += detailRow('Months on waiting list', d.monthsWaiting, null, 5);
+      html += detailRow('Median months since move-in', d.monthsMovein, null, 5);
     } else {
       html += `<p style="font-size:12px;color:var(--ink-soft);margin:0;">No tenant data available — usually because the reporting sample was too small (10 units or fewer), which HUD suppresses for privacy.</p>`;
-      html += detailRow('Client group', r.cgType || '—');
+      html += detailRow('Client group', r.cgType || '—', null, 5);
     }
     html += `</div>`;
 
     html += `<div class="dsec"><p class="dh">Property management</p>`;
-    html += detailRow('Management agent', d.mgmtAgent ? escapeHtml(d.mgmtAgent) : null);
-    html += detailRow('Contact', d.mgmtContact ? escapeHtml(d.mgmtContact) + (d.mgmtTitle ? ', ' + escapeHtml(d.mgmtTitle) : '') : null);
-    html += detailRow('Email', d.mgmtEmail ? escapeHtml(d.mgmtEmail) : null);
-    html += detailRow('Phone', d.mgmtPhone ? escapeHtml(d.mgmtPhone) : null);
-    html += detailRow('On-site phone', d.onSitePhone ? escapeHtml(d.onSitePhone) : null);
+    html += detailRow('Management agent', d.mgmtAgent ? escapeHtml(d.mgmtAgent) : null, null, 5);
+    html += detailRow('Contact', d.mgmtContact ? escapeHtml(d.mgmtContact) + (d.mgmtTitle ? ', ' + escapeHtml(d.mgmtTitle) : '') : null, null, 5);
+    html += detailRow('Email', d.mgmtEmail ? escapeHtml(d.mgmtEmail) : null, null, 5);
+    html += detailRow('Phone', d.mgmtPhone ? escapeHtml(d.mgmtPhone) : null, null, 5);
+    html += detailRow('On-site phone', d.onSitePhone ? escapeHtml(d.onSitePhone) : null, null, 5);
     html += `</div>`;
 
     html += `<div class="dsec"><p class="dh">HUD contacts</p>`;
-    html += detailRow('HUD field office', d.hub ? escapeHtml(d.hub) : null);
-    html += detailRow('Servicing site', d.servSite ? escapeHtml(d.servSite) : null);
-    html += detailRow('Project manager', d.projMgr ? escapeHtml(d.projMgr) : null);
+    html += detailRow('HUD field office', d.hub ? escapeHtml(d.hub) : null, null, 5);
+    html += detailRow('Servicing site', d.servSite ? escapeHtml(d.servSite) : null, null, 5);
+    html += detailRow('Project manager', d.projMgr ? escapeHtml(d.projMgr) : null, null, 5);
     html += `</div>`;
   }
+
+  html += `<div class="dsec" style="border-bottom:none;">
+    <p class="dh">Sources</p>
+    <div style="display:grid;row-gap:5px;font-size:11px;">
+      <div><span class="dsrc" style="margin-right:6px;">1</span><a href="https://www.hud.gov/hud-partners/multifamily-preservation" target="_blank" style="color:var(--accent);">HUD Insured Active Multifamily FHA Property Addresses</a></div>
+      <div><span class="dsrc" style="margin-right:6px;">2</span><a href="https://www.hud.gov/hud-partners/multifamily-fhasl-active" target="_blank" style="color:var(--accent);">HUD Insured Multifamily Mortgages (Active)</a></div>
+      <div><span class="dsrc" style="margin-right:6px;">3</span><a href="https://www.hud.gov/hud-partners/multifamily-preservation" target="_blank" style="color:var(--accent);">HUD Active Multifamily Portfolio, Property Level Data</a></div>
+      <div><span class="dsrc" style="margin-right:6px;">4</span><a href="https://www.hud.gov/hud-partners/multifamily-data" target="_blank" style="color:var(--accent);">HUD FHA Multifamily Firm Commitments and Endorsements Database</a></div>
+      <div><span class="dsrc" style="margin-right:6px;">5</span><a href="https://hudgis-hud.opendata.arcgis.com/datasets/HUD::hud-insured-multifamily-properties-1/" target="_blank" style="color:var(--accent);">HUD Insured Multifamily Properties (ArcGIS)</a></div>
+    </div>
+  </div>`;
 
   panel.innerHTML = html;
 }
@@ -2378,6 +2395,22 @@ document.getElementById('searchBtn').addEventListener('click', async () => {
 
 document.getElementById('addrInput').addEventListener('keydown', e => {
   if(e.key === 'Enter') document.getElementById('searchBtn').click();
+});
+
+document.getElementById('lookupBtn').addEventListener('click', () => {
+  const q = document.getElementById('lookupInput').value.trim().toLowerCase();
+  if(!q){ setStatus('Enter a property name or FHA number to search.', true); return; }
+  const results = PROPS.filter(p => p.n.toLowerCase().includes(q) || p.f.includes(q));
+  currentResults = results.map(r => applyOverride({...r}));
+  searchContext = null;
+  recomputeDistancesFromSubject();
+  radiusLayer.clearLayers();
+  clearDrawnArea();
+  hideUpdateFiltersButton();
+  renderAll(`${results.length.toLocaleString()} ${results.length === 1 ? 'property matches' : 'properties match'} "${q}" (all filters ignored)`);
+});
+document.getElementById('lookupInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter') document.getElementById('lookupBtn').click();
 });
 
 /* ============================================================
