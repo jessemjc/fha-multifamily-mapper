@@ -67,6 +67,9 @@
     border-bottom:1px solid var(--line);
   }
   .field{margin-bottom:14px;}
+  .searchSection{border-left:3px solid var(--accent); padding:12px 4px 14px 12px; margin:0 0 0 -4px;}
+  .searchSection.alt{background:#fafaf7;}
+  .searchSection h2{border-bottom:none; padding-bottom:0; margin-bottom:8px;}
   .field label{
     display:block;
     font-size:12px;
@@ -88,21 +91,7 @@
   .row2 > div{flex:1;}
 
   button{font-family:var(--sans); cursor:pointer;}
-  #searchBtn{
-    width:100%;
-    background:var(--accent);
-    color:#fff;
-    border:none;
-    padding:10px;
-    font-size:13px;
-    font-weight:700;
-    letter-spacing:0.03em;
-    border-radius:3px;
-    text-transform:uppercase;
-    margin-top:4px;
-  }
-  #searchBtn:hover{background:#0a4736;}
-  #searchBtn:disabled{background:#9aa; cursor:default;}
+
 
   .secondaryBtn{
     width:100%;
@@ -118,6 +107,19 @@
   }
   .secondaryBtn:hover{background:var(--accent); color:#fff;}
   .secondaryBtn:disabled{opacity:0.4; cursor:default;}
+  .viewTabBtn{
+    background:none; border:none; border-bottom:2px solid transparent;
+    padding:8px 4px; margin-right:18px; font-size:13px; font-weight:600;
+    color:var(--ink-soft); cursor:pointer;
+  }
+  .viewTabBtn.active{color:var(--ink); border-bottom-color:var(--accent);}
+  .addRowBtn{
+    background:none; border:1px solid var(--line); color:var(--accent);
+    width:22px; height:22px; border-radius:3px; font-size:14px; line-height:1;
+    cursor:pointer; padding:0;
+  }
+  .addRowBtn:hover{background:var(--accent-soft);}
+  .addRowBtn:disabled{opacity:0.3; cursor:default;}
 
   #clearBtn{
     width:100%;
@@ -397,7 +399,8 @@
 
       <div class="divider"></div>
 
-      <h2>Search by address + radius</h2>
+      <div class="searchSection">
+      <h2>📍 Search by address + radius</h2>
       <div class="field">
         <label for="addrInput">Address, city, or zip code</label>
         <input type="text" id="addrInput" placeholder="e.g. 123 Main St, Dallas, TX or 75201">
@@ -406,16 +409,16 @@
         <label for="radiusInput">Radius (miles)</label>
         <input type="number" id="radiusInput" value="10" min="0.5" max="500" step="0.5">
       </div>
-      <button id="searchBtn">Search</button>
+      <button id="searchBtn" class="secondaryBtn">Search</button>
       <div style="margin-top:6px;">
         <button id="pickRadiusBtn" type="button" class="clickPickBtn">📍 Click map instead</button>
       </div>
       <div id="status"></div>
       <button id="cancelPickBtn" type="button" style="display:none;margin-top:6px;width:100%;background:#fff;border:1px solid var(--brick);color:var(--brick);padding:6px;font-size:11.5px;border-radius:3px;">Cancel</button>
+      </div>
 
-      <div class="divider"></div>
-
-      <h2>Search by state / city / zip / county</h2>
+      <div class="searchSection alt">
+      <h2>🗺️ Search by state / city / zip / county</h2>
       <div class="row2">
         <div class="field">
           <label for="stateFilter">State</label>
@@ -437,11 +440,11 @@
         </div>
       </div>
       <button id="filterBtn" class="secondaryBtn">Search</button>
+      </div>
 
-      <div class="divider"></div>
-
-      <h2>Or draw an area on the map</h2>
-      <button id="drawAreaBtn" type="button" class="secondaryBtn">✏️ Draw area on map</button>
+      <div class="searchSection">
+      <h2>✏️ Draw an area on the map</h2>
+      <button id="drawAreaBtn" type="button" class="secondaryBtn">Draw area on map</button>
       <div id="drawControls" style="display:none; margin-top:8px;">
         <p style="font-size:11px;color:var(--ink-soft);margin-bottom:6px;">Click points on the map to outline an area (3+ points). Double-click, or hit "Finish", when done.</p>
         <div style="display:flex; gap:8px;">
@@ -449,15 +452,16 @@
           <button id="cancelDrawBtn" type="button" style="flex:1;background:#fff;border:1px solid var(--line);color:var(--ink-soft);padding:8px;font-size:12px;border-radius:3px;">Cancel</button>
         </div>
       </div>
+      </div>
 
-      <div class="divider"></div>
-
-      <h2>Look up a specific property</h2>
+      <div class="searchSection alt">
+      <h2>🔎 Look up a specific property</h2>
       <p style="font-size:10.5px;color:var(--ink-soft);margin-bottom:6px;">Search by property name or FHA number — finds the property directly, ignoring all filters below (Property type, Client group, Firm Commitment, etc).</p>
       <div class="field">
         <input type="text" id="lookupInput" placeholder="e.g. Hughes House or 11335988">
       </div>
-      <button id="lookupBtn" type="button" style="width:100%; margin-top:8px; background:var(--accent); color:#fff; border:none; padding:8px; font-size:12px; font-weight:700; text-transform:uppercase; border-radius:3px;">Search</button>
+      <button id="lookupBtn" type="button" class="secondaryBtn">Search</button>
+      </div>
 
       <div class="divider"></div>
 
@@ -478,9 +482,9 @@
           <button type="button" class="tristate-btn" data-value="only">Only</button>
         </div>
       </div>
-      <div class="field" style="margin-top:8px;">
-        <label for="pendingAgeSelect">Exclude Firm Commitments older than</label>
-        <select id="pendingAgeSelect">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px;">
+        <label for="pendingAgeSelect" style="font-size:11px; color:var(--ink-soft); font-weight:400; white-space:nowrap;">Max age</label>
+        <select id="pendingAgeSelect" style="flex:1; padding:5px 7px; font-size:11.5px; color:var(--ink-soft); background:#fafaf7;">
           <option value="0" selected>No limit (include all ages)</option>
           <option value="3">3 months</option>
           <option value="6">6 months</option>
@@ -490,7 +494,7 @@
         </select>
       </div>
       <button id="updateFiltersBtnLocal" type="button" style="display:none; width:100%; margin-top:8px; background:var(--accent); color:#fff; border:none; padding:7px; font-size:11.5px; font-weight:700; text-transform:uppercase; border-radius:3px;">↻ Update</button>
-      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Excluded by default. "Include" adds a purple pin for recently-insured properties HUD's main file hasn't caught up to yet, and Firm Commitments that haven't closed yet, alongside your normal results. "Only" shows just the Firm Commitments (not-yet-closed deals) and hides everything else. Only city-level location is available (no street address exists yet), shown as a coarser, distinctly-colored pin.</p>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Excluded by default. "Include" adds a purple pin for Firm Commitments that haven't closed yet, alongside your normal results. "Only" shows just the Firm Commitments and hides everything else. Only city-level location is available. (Recently-insured properties HUD's main file hasn't caught up to yet are also included here, but shown as a normal green pin — they're already confirmed insured, unlike a Firm Commitment that could still fall through.)</p>
 
       <div class="divider"></div>
 
@@ -604,11 +608,11 @@
 
       <div class="divider"></div>
       <p style="font-size:11px;color:var(--ink-soft);line-height:1.6;">
-        Data: HUD Insured Multifamily Mortgages (active) cross-referenced with HUD's Insured Active Multifamily FHA Property Addresses file by FHA project number, plus HUD's Active Multifamily Portfolio data for subsidy/restriction/tax-credit flags.<br><br>
-        <span class="badge badge-exact">exact</span> = geocoded to the real street address, on demand, only for properties in your current results. Tries the U.S. Census geocoder first (two different parsers), then OpenStreetMap as a last resort — different address databases catch different addresses.<br>
+        Data: HUD Insured Multifamily Mortgages (active) cross-referenced with HUD's Insured Active Multifamily FHA Property Addresses file by FHA project number, plus HUD's Active Multifamily Portfolio data for subsidy/restriction/tax-credit flags, and HUD's own Insured Multifamily Properties (ArcGIS) dataset for pre-computed locations and the expanded property details.<br><br>
+        <span class="badge badge-exact">exact</span> = geocoded to the real street address. Most properties use HUD's own pre-computed location (loaded instantly); everything else is geocoded on demand, only for properties in your current results — trying the U.S. Census geocoder first (two different parsers), then OpenStreetMap as a last resort.<br>
         <span class="badge badge-approx">approx</span> = none of those could match the address; falling back to the ZIP code centroid. (A small number of confirmed-insured properties are missing a street address in HUD's own data — those show green, not brick, since they're not in question, just less precisely located.)<br>
         <span class="badge badge-manual">manual</span> = you corrected this pin by hand.<br>
-        <span class="badge badge-pipeline">city-only</span> = a Firm Commitment or recently-insured deal not yet in the main HUD dataset — city-center location only (see "Firm Commitment Deals" toggle above).<br><br>
+        <span class="badge badge-pipeline">city-only</span> = a Firm Commitment or recently-insured deal not yet in the main HUD dataset — city-center location only. Recently-insured, already-confirmed deals still show a normal green pin; only a true Firm Commitment that hasn't closed yet shows purple (see "Firm Commitment Deals" toggle above).<br><br>
         Every pin always shows its own property number. If two properties sit right on top of each other on screen (e.g. sharing a zip centroid), they're nudged apart slightly with a thin line back to the true spot. Click any table row to jump the map straight to that property and open its details.<br><br>
         County names are derived from each property's ZIP code (not HUD's own county field, which has gaps), so county search is complete and consistently spelled for every property.
       </p>
@@ -623,9 +627,15 @@
       <button id="mapExpandBtn" type="button">⤢ Expand map</button>
       <div id="map"></div>
       <div id="resultsWrap">
+        <div id="viewTabs" style="display:flex; gap:2px; padding:8px 12px 0;">
+          <button type="button" class="viewTabBtn active" data-tab="results">Search Results</button>
+          <button type="button" class="viewTabBtn" data-tab="mylist">My List (<span id="myListCount">0</span>)</button>
+          <button id="clearMyListBtn" type="button" style="display:none; margin-left:auto; font-size:11px; color:var(--brick); background:none; border:none; text-decoration:underline; cursor:pointer; padding:0 4px;">Clear list</button>
+        </div>
         <div id="resultsHeader">
           <h2 id="resultsTitle">No search yet</h2>
           <div id="headerBtns">
+            <button id="addAllBtn" style="display:none;">+ Add all to My List</button>
             <button id="geocodeBtn" disabled>Locate street addresses</button>
             <button id="exportBtn" disabled>Export CSV</button>
           </div>
@@ -871,7 +881,10 @@ function runDrawnAreaSearch(polygonPoints, drawShape){
   radiusLayer.clearLayers();
   boundaryLayer.clearLayers();
 
-  renderAll(`${results.length.toLocaleString()} properties inside the drawn area`);
+  const drawnTitle = `${results.length.toLocaleString()} properties inside the drawn area`;
+  renderAll(drawnTitle);
+  lastSearchResults = currentResults; lastSearchContext = searchContext; lastSearchTitle = drawnTitle;
+  updateMyListUI();
   if(results.length > MAX_GEOCODE){
     setStatus(`Found ${results.length.toLocaleString()} properties (zip-level pins shown). That's a lot to street-geocode at once — narrow your area, or click "Locate street addresses" to geocode the first ${MAX_GEOCODE}.`);
   } else {
@@ -1560,6 +1573,9 @@ async function geocodeRows(rows, onProgress){
    RESULTS RENDERING
    ============================================================ */
 let currentResults = [];   // full working set (post radius/filter, pre or post geocode)
+let myList = [];           // properties the person has explicitly added, persists across searches
+let lastSearchResults = [], lastSearchContext = null, lastSearchTitle = '';
+let activeTab = 'results'; // 'results' | 'mylist'
 let searchContext = null;  // {isRadius, point, radius, query}
 let sortState = {col:null, dir:1};
 
@@ -1725,7 +1741,6 @@ function renderDetailPanel(r, d){
   html += detailRow('FHA number', r.f, null, 1);
   html += detailRow('SOA code', d.soaCode, null, 1);
   html += detailRow('SOA description', d.soaDesc ? escapeHtml(d.soaDesc) : null, null, 1);
-  html += detailRow('Primary FHA case', d.isPrimaryFha === true ? 'Yes' : d.isPrimaryFha === false ? 'No' : null, null, 1);
   html += detailRow('County', r.county ? escapeHtml(shortCounty(r.county)) + ' <span class="dmut">(derived from zip)</span>' : null);
   html += detailRow('Congressional district', d.congDist, null, 3);
   html += detailRow('Metro area', d.msa ? escapeHtml(d.msa) : null, null, 3);
@@ -1783,7 +1798,7 @@ function renderDetailPanel(r, d){
     html += `<div class="dsec"><div style="display:flex;justify-content:space-between;align-items:baseline;"><p class="dh" style="margin:0 0 8px;">Financial performance</p>${d.fassDate ? `<span class="ddatebadge">statement closed ${escapeHtml(d.fassDate)}</span>` : ''}</div>`;
     html += detailRow('Annual expenses (current)', fmtMoney(d.expCurr), null, 5);
     html += detailRow('Annual expenses (prior yr)', fmtMoney(d.expPrev), null, 5);
-    html += detailRow('HUD performance rating', d.fassRating ? escapeHtml(d.fassRating) : null, null, 5);
+    html += detailRow('FASS Score', d.fassRating ? escapeHtml(d.fassRating) : null, null, 5);
     html += `</div>`;
 
     const hasTenantData = d.occMonths !== null && d.occMonths !== undefined;
@@ -1808,7 +1823,7 @@ function renderDetailPanel(r, d){
       html += detailRow('Months on waiting list', d.monthsWaiting, null, 5);
       html += detailRow('Median months since move-in', d.monthsMovein, null, 5);
     } else {
-      html += `<p style="font-size:12px;color:var(--ink-soft);margin:0;">No tenant data available — usually because the reporting sample was too small (10 units or fewer), which HUD suppresses for privacy.</p>`;
+      html += `<p style="font-size:12px;color:var(--ink-soft);margin:0;">No tenant data available.</p>`;
       html += detailRow('Client group', r.cgType || '—', null, 5);
     }
     html += `</div>`;
@@ -1877,12 +1892,13 @@ function findClearSpot(desiredPx, occupied, minSep){
 }
 
 function placePin(r, pt){
-  // True pipeline deals (not yet closed) always stay visually distinct on
-  // the map, even after a manual location fix — "catching up" deals and
-  // ordinary properties still switch to green like any other fixed pin.
-  // Insured properties just missing a street address (noAddr) are shown
-  // green too — they're confirmed insured, unlike pipeline deals.
-  const pinStatus = r.pending === 'pipeline' ? 'city' : (r.noAddr ? 'exact' : r._geo);
+  // Only true "pipeline" deals (Firm Commitment issued, not yet closed)
+  // stay visually distinct — they're speculative, could still fall
+  // through. "Catching up" deals (already Initially Endorsed, just not
+  // yet in HUD's main file) and no-address deals are both confirmed,
+  // real insured properties, so they render green like any other
+  // property, even though their location is only city/zip-level.
+  const pinStatus = r.pending === 'pipeline' ? 'city' : (r.noAddr || r.pending === 'catching_up' ? 'exact' : r._geo);
   const icon = numberedIcon(r._num, pinStatus);
   const m = L.marker(pt, {icon});
   bindPropertyPopup(m, r);
@@ -2031,11 +2047,15 @@ function buildTable(){
     return true;
   });
 
-  let html = '<table><thead><tr>';
+  let html = '<table><thead><tr><th style="width:28px;"></th>';
   for(const c of visibleCols) html += `<th data-col="${c.key}">${c.label}</th>`;
   html += '</tr></thead><tbody>';
+  const myListFhaSet = new Set(myList.map(r => r.f));
   for(const r of currentResults){
-    html += `<tr data-fha="${escapeHtml(r.f)}">`;
+    const rowStyle = r.pending === 'pipeline' ? ' style="background:#f3ecf8;"' : '';
+    html += `<tr data-fha="${escapeHtml(r.f)}"${rowStyle}>`;
+    const already = myListFhaSet.has(r.f);
+    html += `<td style="padding:8px 0 8px 8px;"><button type="button" class="addRowBtn" data-fha="${escapeHtml(r.f)}" ${already ? 'disabled title="Already in My List"' : 'title="Add to My List"'}>${already ? '✓' : '+'}</button></td>`;
     for(const c of visibleCols){
       const isNum = c.key==='u' || c.key==='m' || c.key==='bal' || c.key==='_dist' || c.key==='_distSubject' || c.key==='_num';
       const isNoWrap = c.key==='e' || c.key==='fe' || c.key==='fcDate' || c.key==='s' || c.key==='z' || c.key==='f';
@@ -2359,7 +2379,10 @@ async function runRadiusSearchFromPoint(point, label){
     recomputePolygonMembershipIfDrawn();
     recomputeDistancesFromSubject();
     const exactCount = currentResults.filter(r=>r._geo==='exact').length;
-    renderAll(`${currentResults.length.toLocaleString()} properties within ${radius} mi of "${label}"`);
+    const radiusTitle = `${currentResults.length.toLocaleString()} properties within ${radius} mi of "${label}"`;
+    renderAll(radiusTitle);
+    lastSearchResults = currentResults; lastSearchContext = searchContext; lastSearchTitle = radiusTitle;
+    updateMyListUI();
     let msg = `Found ${currentResults.length.toLocaleString()} properties, ${exactCount} at exact street level.`;
     if(truncated) msg += ` (Only the nearest ${MAX_GEOCODE} candidates were street-geocoded — narrow the radius for full precision.)`;
     setStatus(msg);
@@ -2407,10 +2430,87 @@ document.getElementById('lookupBtn').addEventListener('click', () => {
   radiusLayer.clearLayers();
   clearDrawnArea();
   hideUpdateFiltersButton();
-  renderAll(`${results.length.toLocaleString()} ${results.length === 1 ? 'property matches' : 'properties match'} "${q}" (all filters ignored)`);
+  const lookupTitle = `${results.length.toLocaleString()} ${results.length === 1 ? 'property matches' : 'properties match'} "${q}" (all filters ignored)`;
+  renderAll(lookupTitle);
+  lastSearchResults = currentResults; lastSearchContext = searchContext; lastSearchTitle = lookupTitle;
+  updateMyListUI();
 });
 document.getElementById('lookupInput').addEventListener('keydown', e => {
   if(e.key === 'Enter') document.getElementById('lookupBtn').click();
+});
+
+/* ============================================================
+   MY LIST — a persistent, hand-picked set of properties, separate from
+   whatever the current search shows. Reuses the entire existing
+   table/map/geocode/export pipeline: switching to the My List tab just
+   swaps what's in currentResults and calls the normal renderAll(),
+   exactly as if My List were the result of a search. Switching back to
+   "Search Results" restores whatever the last real search produced.
+   ============================================================ */
+function updateMyListUI(){
+  document.getElementById('myListCount').textContent = myList.length;
+  document.getElementById('clearMyListBtn').style.display = (activeTab === 'mylist' && myList.length > 0) ? 'inline' : 'none';
+  document.getElementById('addAllBtn').style.display = (activeTab === 'results' && currentResults.length > 0) ? 'inline-block' : 'none';
+}
+
+document.getElementById('resultsBody').addEventListener('click', (e) => {
+  const btn = e.target.closest('.addRowBtn');
+  if(!btn || btn.disabled) return;
+  e.stopPropagation();
+  const fha = btn.getAttribute('data-fha');
+  if(!myList.some(r => r.f === fha)){
+    const r = currentResults.find(x => x.f === fha);
+    if(r) myList.push({...r});
+  }
+  updateMyListUI();
+  btn.disabled = true;
+  btn.title = 'Already in My List';
+  btn.textContent = '✓';
+});
+
+document.getElementById('addAllBtn').addEventListener('click', () => {
+  const existing = new Set(myList.map(r => r.f));
+  for(const r of currentResults){
+    if(!existing.has(r.f)){ myList.push({...r}); existing.add(r.f); }
+  }
+  updateMyListUI();
+  buildTable();
+});
+
+document.getElementById('clearMyListBtn').addEventListener('click', () => {
+  myList = [];
+  updateMyListUI();
+  if(activeTab === 'mylist'){
+    currentResults = [];
+    searchContext = null;
+    renderAll('0 properties in My List');
+  }
+});
+
+document.querySelectorAll('.viewTabBtn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.getAttribute('data-tab');
+    if(tab === activeTab) return;
+    activeTab = tab;
+    document.querySelectorAll('.viewTabBtn').forEach(b => b.classList.toggle('active', b === btn));
+    if(tab === 'mylist'){
+      currentResults = myList.map(r => applyOverride({...r}));
+      searchContext = null;
+      recomputeDistancesFromSubject();
+      renderAll(`${myList.length.toLocaleString()} ${myList.length === 1 ? 'property' : 'properties'} in My List`);
+    } else {
+      currentResults = lastSearchResults;
+      searchContext = lastSearchContext;
+      if(currentResults.length){
+        renderAll(lastSearchTitle);
+      } else {
+        document.getElementById('resultsTitle').textContent = 'No search yet';
+        document.getElementById('resultsBody').innerHTML = '<div class="empty-state"><strong>Enter an address and radius, or use the filters, to begin.</strong>Results will appear on the map and in a table here.</div>';
+        markerLayer.clearLayers();
+      }
+    }
+    updateMyListUI();
+  });
 });
 
 /* ============================================================
@@ -2468,7 +2568,10 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
   if(county) parts.push(`county contains "${county}"`);
   if(state) parts.push(`state = ${state}`);
   if(zip) parts.push(`zip = ${zip}`);
-  renderAll(`${results.length.toLocaleString()} properties — ${parts.join(', ')}`);
+  const filterTitle = `${results.length.toLocaleString()} properties — ${parts.join(', ')}`;
+  renderAll(filterTitle);
+  lastSearchResults = currentResults; lastSearchContext = searchContext; lastSearchTitle = filterTitle;
+  updateMyListUI();
 
   if(results.length > MAX_GEOCODE){
     setStatus(`Found ${results.length.toLocaleString()} properties (zip-level pins shown). That's a lot to street-geocode at once — narrow your filters, or click "Locate street addresses" to geocode the first ${MAX_GEOCODE}.`);
