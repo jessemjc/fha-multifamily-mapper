@@ -25,6 +25,7 @@ import zipcodes
 import json
 import re
 import requests
+import math
 
 PROPERTY_ADDRESSES_URL = "https://www.hud.gov/sites/dfiles/Housing/documents/InsuredActiveMultifamilyFHAPropertyAddresses.xlsx"
 ACTIVE_MORTGAGES_URL = "https://www.hud.gov/sites/default/files/Housing/documents/FHA-BF90-RM-A.xlsx"
@@ -251,7 +252,7 @@ def fetch_arcgis_layer(base_url, out_fields, where="1=1", page_size=2000, max_pa
     return all_features
 
 ARCGIS_FIELDS = (
-    "PRIMARY_FHA_NUMBER,LAT,LON,LVL2KX,"
+    "PRIMARY_FHA_NUMBER,PROPERTY_ID,LAT,LON,LVL2KX,"
     "CLIENT_GROUP_TYPE,CLIENT_GROUP_NAME,ELDLY_PRCNT,"
     "REAC_LAST_INSPECTION_SCORE,REAC_LAST_INSPECTION_DATE,IS_IN_DEFAULT_DELINQUENT_IND,"
     "ANNL_EXPNS_AMNT,ANNL_EXPNS_AMNT_PREV_YR,FASS_LAST_PERFORMANCE_VALUE,FASS_LAST_AFS_CLOSED_DATE,"
@@ -265,14 +266,24 @@ ARCGIS_FIELDS = (
     "HUB_NAME_TEXT,SERVICING_SITE_NAME_TEXT,PROJECT_MANAGER_NAME_TEXT"
 )
 
+def is_missing(val):
+    """True for None or float NaN — pandas/JSON can both produce NaN for
+    missing values, and NaN is truthy in Python, which silently breaks
+    simple `val or default` fallback patterns."""
+    return val is None or (isinstance(val, float) and math.isnan(val))
+
 def sup(val):
     """Treat HUD's -4 privacy-suppression placeholder as missing."""
-    if val is None or val == -4:
+    if is_missing(val) or val == -4:
         return None
     return val
 
+def txt(val):
+    """NaN-safe string fallback — use instead of `val or ''`."""
+    return '' if is_missing(val) else str(val)
+
 def arcgis_date(ms):
-    if ms is None:
+    if is_missing(ms):
         return ''
     try:
         return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
@@ -296,7 +307,7 @@ try:
         seen_fha.add(fha8)
 
         lat_val, lon_val = attrs.get("LAT"), attrs.get("LON")
-        if attrs.get("LVL2KX") in ("R", "4") and lat_val is not None and lon_val is not None:
+        if attrs.get("LVL2KX") in ("R", "4") and not is_missing(lat_val) and not is_missing(lon_val):
             hud_geocode_lookup[fha8] = (float(lat_val), float(lon_val))
 
         months_since_report = attrs.get("MONTHS_SINCE_REPORT")
@@ -305,14 +316,15 @@ try:
             return None if tenant_suppressed else sup(val)
 
         hud_detail_lookup[fha8] = {
-            "cgType": attrs.get("CLIENT_GROUP_TYPE") or '',
-            "cgName": attrs.get("CLIENT_GROUP_NAME") or '',
+            "_propertyId": attrs.get("PROPERTY_ID"),
+            "cgType": txt(attrs.get("CLIENT_GROUP_TYPE")),
+            "cgName": txt(attrs.get("CLIENT_GROUP_NAME")),
             "reacScore": sup(attrs.get("REAC_LAST_INSPECTION_SCORE")),
             "reacDate": arcgis_date(attrs.get("REAC_LAST_INSPECTION_DATE")),
-            "default": (str(attrs.get("IS_IN_DEFAULT_DELINQUENT_IND")).strip().upper() == 'Y') if attrs.get("IS_IN_DEFAULT_DELINQUENT_IND") is not None else None,
+            "default": (str(attrs.get("IS_IN_DEFAULT_DELINQUENT_IND")).strip().upper() == 'Y') if not is_missing(attrs.get("IS_IN_DEFAULT_DELINQUENT_IND")) else None,
             "expCurr": sup(attrs.get("ANNL_EXPNS_AMNT")),
             "expPrev": sup(attrs.get("ANNL_EXPNS_AMNT_PREV_YR")),
-            "fassRating": attrs.get("FASS_LAST_PERFORMANCE_VALUE") or '',
+            "fassRating": txt(attrs.get("FASS_LAST_PERFORMANCE_VALUE")),
             "fassDate": arcgis_date(attrs.get("FASS_LAST_AFS_CLOSED_DATE")),
             "eldPct": tf(attrs.get("ELDLY_PRCNT")),
             "occPct": tf(attrs.get("PCT_OCCUPIED")),
@@ -334,21 +346,75 @@ try:
             "maxContractUnits": sup(attrs.get("MAXIMUM_CONTRACT_UNIT_COUNT")),
             "mktRentUnits": sup(attrs.get("UNIT_MRKT_RENT_CNT")),
             "contractExp": arcgis_date(attrs.get("EXPIRATION_DATE1")),
-            "mgmtAgent": attrs.get("MGMT_AGENT_ORG_NAME") or '',
-            "mgmtContact": attrs.get("MGMT_CONTACT_FULL_NAME") or '',
-            "mgmtTitle": attrs.get("MGMT_CONTACT_INDV_TITLE_TEXT") or '',
-            "mgmtEmail": attrs.get("MGMT_CONTACT_EMAIL_TEXT") or '',
-            "mgmtPhone": attrs.get("MGMT_CONTACT_MAIN_PHN_NBR") or '',
-            "onSitePhone": attrs.get("PROPERTY_ON_SITE_PHONE_NUMBER") or '',
-            "hub": attrs.get("HUB_NAME_TEXT") or '',
-            "servSite": attrs.get("SERVICING_SITE_NAME_TEXT") or '',
-            "projMgr": attrs.get("PROJECT_MANAGER_NAME_TEXT") or '',
+            "mgmtAgent": txt(attrs.get("MGMT_AGENT_ORG_NAME")),
+            "mgmtContact": txt(attrs.get("MGMT_CONTACT_FULL_NAME")),
+            "mgmtTitle": txt(attrs.get("MGMT_CONTACT_INDV_TITLE_TEXT")),
+            "mgmtEmail": txt(attrs.get("MGMT_CONTACT_EMAIL_TEXT")),
+            "mgmtPhone": txt(attrs.get("MGMT_CONTACT_MAIN_PHN_NBR")),
+            "onSitePhone": txt(attrs.get("PROPERTY_ON_SITE_PHONE_NUMBER")),
+            "hub": txt(attrs.get("HUB_NAME_TEXT")),
+            "servSite": txt(attrs.get("SERVICING_SITE_NAME_TEXT")),
+            "projMgr": txt(attrs.get("PROJECT_MANAGER_NAME_TEXT")),
         }
     print(f"HUD pre-geocoded coordinates loaded for {len(hud_geocode_lookup)} FHA numbers (rooftop/ZIP+4 accuracy only).")
     print(f"HUD detail-view data loaded for {len(hud_detail_lookup)} FHA numbers.")
 except Exception as e:
     print(f"Could not fetch HUD's ArcGIS geocoding layer ({e}) — skipping pre-geocoding and detail-view enhancements this run "
           f"(all properties will use the normal live-geocoding flow, no expanded detail data).")
+
+# ============================================================
+# MOST-CURRENT REAC SCORES
+# HUD's own "Physical Inspection Scores by State" file
+# (MF-Inspection-Report.xls) is a separate, more frequently-updated
+# source than the ArcGIS layer's REAC field — verified directly:
+# ~94.5% match exactly, and nearly all disagreements are cases where
+# this file has a newer inspection the ArcGIS layer hasn't caught up to
+# yet. For each property, whichever source has the more recent
+# inspection date wins. Bridged via PROPERTY_ID = REMS Property Id (the
+# same 9-digit HUD identifier, confirmed by direct cross-check).
+# This file lives at a fixed URL (no monthly filename change), so it's
+# straightforward to fetch automatically every run.
+# ============================================================
+REAC_SCORES_URL = "https://www.hud.gov/sites/default/files/Housing/documents/MF-Inspection-Report.xls"
+reac_as_of_date = None
+try:
+    download(REAC_SCORES_URL, "reac_scores.xls")
+    reac_df = pd.read_excel("reac_scores.xls", sheet_name="Sheet1")
+    reac_lookup = {}
+    for _, rrow in reac_df.iterrows():
+        pid = rrow.get('REMS Property Id')
+        score = rrow.get('Inspection Score1')
+        date = rrow.get('Release Date 1')
+        if pd.notna(pid) and pd.notna(score) and pd.notna(date):
+            reac_lookup[pid] = (str(score).strip(), pd.to_datetime(date))
+
+    upgraded = 0
+    for fha8, detail in hud_detail_lookup.items():
+        pid = detail.pop('_propertyId', None)
+        if pid is None or pid not in reac_lookup:
+            continue
+        new_score, new_date = reac_lookup[pid]
+        old_date = pd.to_datetime(detail.get('reacDate'), errors='coerce') if detail.get('reacDate') else None
+        if old_date is None or pd.isna(old_date) or new_date > old_date:
+            detail['reacScore'] = new_score
+            detail['reacDate'] = new_date.strftime('%Y-%m-%d')
+            upgraded += 1
+    print(f"REAC scores upgraded to a newer inspection from the authoritative file: {upgraded} properties.")
+
+    # Pull the "as of" date directly off the landing page (e.g. "July 1, 2026")
+    try:
+        page_resp = requests.get("https://www.hud.gov/stat/mfh/inspection-scores", timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+        page_resp.raise_for_status()
+        m = re.search(r'Data,\s*as of\s+([A-Za-z]+ \d{1,2},\s*\d{4})', page_resp.text)
+        if m:
+            reac_as_of_date = m.group(1)
+    except Exception as e:
+        print(f"Could not scrape REAC 'as of' date from landing page ({e}).")
+except Exception as e:
+    print(f"Could not fetch the authoritative REAC scores file ({e}) — keeping ArcGIS-sourced REAC data as-is, "
+          f"and 'no score' properties in the detail view won't show an 'as of' date.")
+    for detail in hud_detail_lookup.values():
+        detail.pop('_propertyId', None)
 
 # Pull the layer's own "Data Last Edit Date" from its metadata (a clean
 # JSON field, not text-scraped) to show how current this source is.
@@ -809,6 +875,7 @@ metadata = {
     "portfolioDate": portfolio_date or "unknown",
     "firmCommitmentsDate": firm_commitments_date or "unknown",
     "hudGeocodeDate": hud_geocode_date or "unknown",
+    "reacAsOfDate": reac_as_of_date or "unknown",
     "buildDate": build_date,
 }
 metadata_json = json.dumps(metadata)

@@ -630,7 +630,8 @@
         <div id="viewTabs" style="display:flex; gap:2px; padding:8px 12px 0;">
           <button type="button" class="viewTabBtn active" data-tab="results">Search Results</button>
           <button type="button" class="viewTabBtn" data-tab="mylist">My List (<span id="myListCount">0</span>)</button>
-          <button id="clearMyListBtn" type="button" style="display:none; margin-left:auto; font-size:11px; color:var(--brick); background:none; border:none; text-decoration:underline; cursor:pointer; padding:0 4px;">Clear list</button>
+          <button id="copy2530Btn" type="button" style="display:none; margin-left:auto; font-size:11px; color:var(--accent); background:none; border:none; text-decoration:underline; cursor:pointer; padding:0 4px;">📋 Copy for HUD 2530</button>
+          <button id="clearMyListBtn" type="button" style="display:none; font-size:11px; color:var(--brick); background:none; border:none; text-decoration:underline; cursor:pointer; padding:0 4px;">Clear list</button>
         </div>
         <div id="resultsHeader">
           <h2 id="resultsTitle">No search yet</h2>
@@ -688,6 +689,9 @@ document.getElementById('sourcesInfo').innerHTML = `
   <strong style="color:var(--ink);">HUD Insured Multifamily Properties (ArcGIS)</strong><br>
   HUD's own pre-computed rooftop/ZIP+4-accuracy coordinates. Where available, properties load already at street-level precision with no live geocoding needed — this covers the large majority of properties. Everything else still uses the Census/OpenStreetMap chain described above.<br>
   HUD lists this data as of: ${BUILD_META.hudGeocodeDate || 'unknown'}<br><br>
+  <strong style="color:var(--ink);">HUD Physical Inspection Scores by State (REAC)</strong><br>
+  A separate, more frequently-updated source for REAC condition scores specifically — used whenever it has a newer inspection than the ArcGIS source above. Only applies to Residential properties (REAC doesn't inspect Healthcare/Hospital facilities).<br>
+  HUD lists this data as of: ${BUILD_META.reacAsOfDate || 'unknown'}<br><br>
   <strong style="color:var(--ink);">This site last refreshed with new HUD data:</strong> ${BUILD_META.buildDate || 'unknown'}<br><br>
   <em>This tool is built independently from publicly available HUD data and is not affiliated with, endorsed by, or officially associated with HUD or any federal agency. Data may be delayed, incomplete, or approximate (see notes above) — verify independently before relying on it for decisions.</em>
 `;
@@ -1791,7 +1795,7 @@ function renderDetailPanel(r, d){
 
   if(!r.pending){
     html += `<div class="dsec"><div style="display:flex;justify-content:space-between;align-items:baseline;"><p class="dh" style="margin:0 0 8px;">Condition and risk</p>${d.reacDate ? `<span class="ddatebadge">inspected ${escapeHtml(d.reacDate)}</span>` : ''}</div>`;
-    html += detailRow('REAC score', d.reacScore !== null && d.reacScore !== undefined ? `${d.reacScore} / 100` : null, null, 5);
+    html += detailRow('REAC score', d.reacScore !== null && d.reacScore !== undefined ? `${d.reacScore} / 100` : null, null, 6);
     html += detailRow('Default / delinquent', d.default === true ? 'Yes' : d.default === false ? 'No' : null, null, 5);
     html += `</div>`;
 
@@ -1851,6 +1855,7 @@ function renderDetailPanel(r, d){
       <div><span class="dsrc" style="margin-right:6px;">3</span><a href="https://www.hud.gov/hud-partners/multifamily-preservation" target="_blank" style="color:var(--accent);">HUD Active Multifamily Portfolio, Property Level Data</a></div>
       <div><span class="dsrc" style="margin-right:6px;">4</span><a href="https://www.hud.gov/hud-partners/multifamily-data" target="_blank" style="color:var(--accent);">HUD FHA Multifamily Firm Commitments and Endorsements Database</a></div>
       <div><span class="dsrc" style="margin-right:6px;">5</span><a href="https://hudgis-hud.opendata.arcgis.com/datasets/HUD::hud-insured-multifamily-properties-1/" target="_blank" style="color:var(--accent);">HUD Insured Multifamily Properties (ArcGIS)</a></div>
+      <div><span class="dsrc" style="margin-right:6px;">6</span><a href="https://www.hud.gov/stat/mfh/inspection-scores" target="_blank" style="color:var(--accent);">HUD Physical Inspection Scores by State (REAC) — used when more current than source 5</a></div>
     </div>
   </div>`;
 
@@ -2449,7 +2454,9 @@ document.getElementById('lookupInput').addEventListener('keydown', e => {
    ============================================================ */
 function updateMyListUI(){
   document.getElementById('myListCount').textContent = myList.length;
-  document.getElementById('clearMyListBtn').style.display = (activeTab === 'mylist' && myList.length > 0) ? 'inline' : 'none';
+  const showListControls = activeTab === 'mylist' && myList.length > 0;
+  document.getElementById('clearMyListBtn').style.display = showListControls ? 'inline' : 'none';
+  document.getElementById('copy2530Btn').style.display = showListControls ? 'inline' : 'none';
   document.getElementById('addAllBtn').style.display = (activeTab === 'results' && currentResults.length > 0) ? 'inline-block' : 'none';
 }
 
@@ -2485,6 +2492,56 @@ document.getElementById('clearMyListBtn').addEventListener('click', () => {
     searchContext = null;
     renderAll('0 properties in My List');
   }
+});
+
+/* ============================================================
+   HUD 2530 EXPORT — Schedule A ("List of Previous Projects and
+   Section 8 Contracts"). Builds one tab-separated row per property in
+   My List, matching that form's column layout exactly: data only in
+   columns C (#2, previous project) and I (#6, REAC score/date), with
+   B/D/E/F/G/H left blank for the participant to fill in by hand.
+   Pasting into cell B8 on Page 2 of the template lands everything in
+   the right cells.
+   ============================================================ */
+function formatReacDateShort(dateStr){
+  if(!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  if(isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', {month:'short', year:'numeric'});
+}
+
+document.getElementById('copy2530Btn').addEventListener('click', async () => {
+  const btn = document.getElementById('copy2530Btn');
+  const originalText = btn.textContent;
+  btn.textContent = 'Loading…';
+  const details = await loadPropertyDetails();
+
+  const rows = myList.map(r => {
+    const d = details[r.f] || {};
+    const projectCell = `${r.n}, FHA #${r.f}, HUD`;
+    let reacCell = '';
+    if(d.reacScore !== null && d.reacScore !== undefined){
+      const scoreStr = String(d.reacScore).trim().replace(/\s+/g, ' ');
+      const isPureNumber = /^\d+(\.\d+)?$/.test(scoreStr);
+      reacCell = isPureNumber ? `REAC ${scoreStr}/100` : `REAC ${scoreStr}`;
+      const dateShort = formatReacDateShort(d.reacDate);
+      if(dateShort) reacCell += ` (${dateShort})`;
+    } else {
+      reacCell = `No score as of ${BUILD_META.reacAsOfDate || 'unknown'}`;
+    }
+    // 8 fields = columns B,C,D,E,F,G,H,I — data only in C (index 1) and I (index 7)
+    return ['', projectCell, '', '', '', '', '', reacCell].join('\t');
+  });
+
+  const tsv = rows.join('\n');
+  try {
+    await navigator.clipboard.writeText(tsv);
+    btn.textContent = `✓ Copied ${myList.length} ${myList.length === 1 ? 'row' : 'rows'}!`;
+  } catch(err) {
+    btn.textContent = 'Copy failed — see console';
+    console.error('Clipboard write failed:', err);
+  }
+  setTimeout(() => { btn.textContent = originalText; }, 2500);
 });
 
 document.querySelectorAll('.viewTabBtn').forEach(btn => {
