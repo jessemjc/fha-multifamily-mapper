@@ -2499,8 +2499,8 @@ document.getElementById('clearMyListBtn').addEventListener('click', () => {
    Section 8 Contracts"). Builds one tab-separated row per property in
    My List, matching that form's column layout exactly: data only in
    columns C (#2, previous project) and I (#6, REAC score/date), with
-   B/D/E/F/G/H left blank for the participant to fill in by hand.
-   Pasting into cell B8 on Page 2 of the template lands everything in
+   D/E/F/G/H left blank for the participant to fill in by hand.
+   Pasting into cell C8 on Page 2 of the template lands everything in
    the right cells.
    ============================================================ */
 function formatDateMMDDYY(dateStr){
@@ -2547,8 +2547,8 @@ document.getElementById('copy2530Btn').addEventListener('click', async () => {
     } else {
       reacCell = `No score as of ${formatDateMMDDYYYY(BUILD_META.reacAsOfDate)}`;
     }
-    // 8 fields = columns B,C,D,E,F,G,H,I — data only in C (index 1) and I (index 7)
-    return ['', projectCell, '', '', '', '', '', reacCell].join('\t');
+    // 7 fields = columns C,D,E,F,G,H,I — data only in C (index 0) and I (index 6)
+    return [projectCell, '', '', '', '', '', reacCell].join('\t');
   });
 
   const tsv = rows.join('\n');
