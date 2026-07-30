@@ -2503,11 +2503,27 @@ document.getElementById('clearMyListBtn').addEventListener('click', () => {
    Pasting into cell B8 on Page 2 of the template lands everything in
    the right cells.
    ============================================================ */
-function formatReacDateShort(dateStr){
+function formatDateMMDDYY(dateStr){
   if(!dateStr) return '';
   const d = new Date(dateStr + 'T00:00:00');
   if(isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-US', {month:'short', year:'numeric'});
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${mm}/${dd}/${yy}`;
+}
+function formatDateMMDDYYYY(dateStr){
+  if(!dateStr || dateStr === 'unknown') return dateStr || 'unknown';
+  const d = new Date(dateStr);
+  if(isNaN(d.getTime())) return dateStr;
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${mm}/${dd}/${d.getFullYear()}`;
+}
+function dashedFhaNumber(fha){
+  // Standard HUD project number notation: 3-digit insuring office code,
+  // dash, then the remaining sequence digits — e.g. 11536025 -> 115-36025
+  return String(fha).replace(/^(\d{3})(\d+)$/, '$1-$2');
 }
 
 document.getElementById('copy2530Btn').addEventListener('click', async () => {
@@ -2518,16 +2534,18 @@ document.getElementById('copy2530Btn').addEventListener('click', async () => {
 
   const rows = myList.map(r => {
     const d = details[r.f] || {};
-    const projectCell = `${r.n}, FHA #${r.f}, HUD`;
+    // Property name and FHA number on two lines within the same cell —
+    // quoted so Excel's paste parser keeps the embedded newline inside
+    // one cell instead of starting a new row.
+    const projectCell = `"${r.n}\nFHA #${dashedFhaNumber(r.f)}, HUD"`;
     let reacCell = '';
     if(d.reacScore !== null && d.reacScore !== undefined){
       const scoreStr = String(d.reacScore).trim().replace(/\s+/g, ' ');
-      const isPureNumber = /^\d+(\.\d+)?$/.test(scoreStr);
-      reacCell = isPureNumber ? `REAC ${scoreStr}/100` : `REAC ${scoreStr}`;
-      const dateShort = formatReacDateShort(d.reacDate);
+      reacCell = `REAC ${scoreStr}`;
+      const dateShort = formatDateMMDDYY(d.reacDate);
       if(dateShort) reacCell += ` (${dateShort})`;
     } else {
-      reacCell = `No score as of ${BUILD_META.reacAsOfDate || 'unknown'}`;
+      reacCell = `No score as of ${formatDateMMDDYYYY(BUILD_META.reacAsOfDate)}`;
     }
     // 8 fields = columns B,C,D,E,F,G,H,I — data only in C (index 1) and I (index 7)
     return ['', projectCell, '', '', '', '', '', reacCell].join('\t');
