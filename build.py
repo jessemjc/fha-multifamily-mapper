@@ -67,11 +67,28 @@ download(PORTFOLIO_DATA_URL, "portfolio_data.xlsx")
 # filename (e.g. "...FY26-Q3.xlsx"), so it changes every quarter. Rather
 # than hardcode a URL that will go stale, find the current one by
 # scraping the stable landing page for a link matching the pattern.
+def fetch_with_retry(url, max_retries=4, **kwargs):
+    """Same retry/backoff protection as download(), for page fetches that
+    need the response text rather than a saved file (landing pages we
+    scrape for a current filename or an 'as of' date)."""
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, **kwargs)
+            resp.raise_for_status()
+            return resp
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            print(f"  -> fetching {url} failed on attempt {attempt}/{max_retries} ({e})"
+                  f"{' — retrying...' if attempt < max_retries else ''}")
+            if attempt < max_retries:
+                time.sleep(5 * attempt)
+    raise last_error
+
 FIRM_COMMITMENTS_LANDING_PAGE = "https://www.hud.gov/hud-partners/multifamily-data"
 firm_commitments_path = None
 try:
-    resp = requests.get(FIRM_COMMITMENTS_LANDING_PAGE, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
-    resp.raise_for_status()
+    resp = fetch_with_retry(FIRM_COMMITMENTS_LANDING_PAGE, timeout=30)
     m = re.search(
         r'https://www\.hud\.gov/sites/default/files/Housing/documents/'
         r'FHA-MF-Firm-Commitments-and-Endorsements-Database-FY\d+-FY\d+-Q\d+\.xlsx',
@@ -104,8 +121,7 @@ def extract_hud_date(html, filename_hint):
 
 def fetch_hud_date(page_url, filename_hint):
     try:
-        resp = requests.get(page_url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
-        resp.raise_for_status()
+        resp = fetch_with_retry(page_url, timeout=30)
         return extract_hud_date(resp.text, filename_hint)
     except Exception as e:
         print(f"Could not fetch HUD date from {page_url}: {e}")
@@ -282,8 +298,7 @@ def fetch_arcgis_layer(base_url, out_fields, where="1=1", page_size=2000, max_pa
             "resultRecordCount": page_size,
             "resultOffset": offset,
         }
-        resp = requests.get(base_url + "/query", params=params, timeout=60)
-        resp.raise_for_status()
+        resp = fetch_with_retry(base_url + "/query", params=params, timeout=60)
         data = resp.json()
         if "error" in data:
             raise Exception(f"ArcGIS API error: {data['error']}")
@@ -453,8 +468,7 @@ try:
 
     # Pull the "as of" date directly off the landing page (e.g. "July 1, 2026")
     try:
-        page_resp = requests.get("https://www.hud.gov/stat/mfh/inspection-scores", timeout=30, headers={"User-Agent": "Mozilla/5.0"})
-        page_resp.raise_for_status()
+        page_resp = fetch_with_retry("https://www.hud.gov/stat/mfh/inspection-scores", timeout=30)
         m = re.search(r'Data,\s*as of\s+([A-Za-z]+ \d{1,2},\s*\d{4})', page_resp.text)
         if m:
             reac_as_of_date = m.group(1)
@@ -470,8 +484,7 @@ except Exception as e:
 # JSON field, not text-scraped) to show how current this source is.
 hud_geocode_date = None
 try:
-    meta_resp = requests.get(ARCGIS_BASE, params={"f": "json"}, timeout=30)
-    meta_resp.raise_for_status()
+    meta_resp = fetch_with_retry(ARCGIS_BASE, params={"f": "json"}, timeout=30)
     meta = meta_resp.json()
     edit_ms = meta.get("editingInfo", {}).get("dataLastEditDate")
     if edit_ms:
