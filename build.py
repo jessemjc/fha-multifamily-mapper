@@ -26,18 +26,38 @@ import json
 import re
 import requests
 import math
+import time
 
 PROPERTY_ADDRESSES_URL = "https://www.hud.gov/sites/dfiles/Housing/documents/InsuredActiveMultifamilyFHAPropertyAddresses.xlsx"
 ACTIVE_MORTGAGES_URL = "https://www.hud.gov/sites/default/files/Housing/documents/FHA-BF90-RM-A.xlsx"
 PORTFOLIO_DATA_URL = "https://www.hud.gov/sites/dfiles/Housing/documents/activeportfoliopropdata.xlsx"
 
-def download(url, dest):
-    print(f"Downloading {url} ...")
-    resp = requests.get(url, timeout=120, headers={"User-Agent": "Mozilla/5.0"})
-    resp.raise_for_status()
-    with open(dest, "wb") as f:
-        f.write(resp.content)
-    print(f"  -> saved {dest} ({len(resp.content)/1024/1024:.1f} MB)")
+def download(url, dest, max_retries=4):
+    """Downloads with retries — HUD's servers occasionally drop the
+    connection mid-transfer on larger files (seen in practice: a 17MB
+    file failing after only ~270KB), which is a transient network issue,
+    not a real error. Retries with a growing delay before giving up."""
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"Downloading {url} ...", f"(attempt {attempt}/{max_retries})" if attempt > 1 else "")
+            resp = requests.get(url, timeout=180, headers={"User-Agent": "Mozilla/5.0"})
+            resp.raise_for_status()
+            content = resp.content
+            expected_len = resp.headers.get('Content-Length')
+            if expected_len and len(content) != int(expected_len):
+                raise requests.exceptions.ChunkedEncodingError(
+                    f"Got {len(content)} bytes, expected {expected_len}")
+            with open(dest, "wb") as f:
+                f.write(content)
+            print(f"  -> saved {dest} ({len(content)/1024/1024:.1f} MB)")
+            return
+        except (requests.exceptions.RequestException, requests.exceptions.ChunkedEncodingError) as e:
+            last_error = e
+            print(f"  -> attempt {attempt} failed ({e}){' — retrying...' if attempt < max_retries else ''}")
+            if attempt < max_retries:
+                time.sleep(5 * attempt)  # 5s, 10s, 15s...
+    raise last_error
 
 download(PROPERTY_ADDRESSES_URL, "property_addresses.xlsx")
 download(ACTIVE_MORTGAGES_URL, "active_mortgages.xlsx")
@@ -123,12 +143,19 @@ df1['fha_number'] = df1['fha_number'].astype(str).str.strip().str.zfill(8)
 df2['proj_num'] = df2['HUD PROJECT NUMBER'].astype(str).str.strip().str.zfill(8)
 
 # Only keep df2 columns we need for enrichment (avoid dup city/state/zip - use df1's address data as primary)
-df2_small = df2[['proj_num','UNITS','INITIAL ENDORSEMENT DATE','FINAL ENDORSEMENT DATE',
-                  'ORIGINAL MORTGAGE AMOUNT','AMORITIZED PRINCIPAL BALANCE','CURRENT PRINCIPAL AND INTEREST',
-                  'INTEREST RATE','FIRST PAYMENT DATE','MATURITY DATE','TERM IN MONTHS',
-                  'HOLDER NAME','HOLDER CITY','HOLDER STATE','SERVICER NAME','SERVICER CITY','SERVICER STATE',
-                  'SECTION OF ACT CODE','SOA CATEGORY/SUB CATEGORY','BUSINESS_TYPE',
-                  'TC','TE']].copy()
+DF2_WANTED_COLS = ['proj_num','UNITS','INITIAL ENDORSEMENT DATE','FINAL ENDORSEMENT DATE',
+                    'ORIGINAL MORTGAGE AMOUNT','AMORITIZED PRINCIPAL BALANCE','CURRENT PRINCIPAL AND INTEREST',
+                    'INTEREST RATE','FIRST PAYMENT DATE','MATURITY DATE','TERM IN MONTHS',
+                    'HOLDER NAME','HOLDER CITY','HOLDER STATE','SERVICER NAME','SERVICER CITY','SERVICER STATE',
+                    'SECTION OF ACT CODE','SOA CATEGORY/SUB CATEGORY','BUSINESS_TYPE',
+                    'TC','TE']
+_missing_df2_cols = [c for c in DF2_WANTED_COLS if c not in df2.columns]
+if _missing_df2_cols:
+    print(f"WARNING: mortgage file is missing expected column(s) {_missing_df2_cols} — "
+          f"those fields will be blank this run instead of crashing the whole pipeline.")
+    for c in _missing_df2_cols:
+        df2[c] = None
+df2_small = df2[DF2_WANTED_COLS].copy()
 BT_CODE = {'MF Residential':'R', 'MF Healthcare':'H', 'MF Hospitals':'P'}
 
 # --- Third data source: Active Portfolio Property Data (subsidy/restriction flags) ---
@@ -137,9 +164,16 @@ sheet2 = pd.read_excel(f3, sheet_name='All active Properties with FHA ')
 sheet2['fha_number'] = sheet2['fha_number'].astype(str).str.strip().str.zfill(8)
 portfolio = sheet1.merge(sheet2[['property_id','fha_number']], on='property_id', how='inner')
 portfolio = portfolio[portfolio['is_insured_ind'] == 'Y']
-portfolio = portfolio[['fha_number','is_subsidized_ind','is_sec8_ind','has_use_restriction_ind',
-                       'congressional_district_code','msa_name_text','has_service_agreement_ind',
-                       'occupancy_date','total_assisted_unit_count']].drop_duplicates(subset='fha_number')
+PORTFOLIO_WANTED_COLS = ['fha_number','is_subsidized_ind','is_sec8_ind','has_use_restriction_ind',
+                          'congressional_district_code','msa_name_text','has_service_agreement_ind',
+                          'occupancy_date','total_assisted_unit_count']
+_missing_portfolio_cols = [c for c in PORTFOLIO_WANTED_COLS if c not in portfolio.columns]
+if _missing_portfolio_cols:
+    print(f"WARNING: portfolio file is missing expected column(s) {_missing_portfolio_cols} — "
+          f"those fields will be blank this run instead of crashing the whole pipeline.")
+    for c in _missing_portfolio_cols:
+        portfolio[c] = None
+portfolio = portfolio[PORTFOLIO_WANTED_COLS].drop_duplicates(subset='fha_number')
 
 # --- Financing-type bucket scheme (residential properties only) ---
 BUCKET_OF = {}
@@ -191,6 +225,16 @@ for c, lbl in OTHER_LABELS.items():
     LABEL_OF[c] = lbl
 # dedupe proj_num in df2 (should already be unique)
 df2_small = df2_small.drop_duplicates(subset='proj_num')
+
+DF1_REQUIRED_COLS = ['soa_code', 'soa_description_text', 'is_primary_fha_ind',
+                      'property_name_text', 'address_line1_text', 'address_line2_text',
+                      'city_name_text', 'state_code', 'zip_code', 'fha_number', 'soa_numeric_name']
+_missing_df1_cols = [c for c in DF1_REQUIRED_COLS if c not in df1.columns]
+if _missing_df1_cols:
+    print(f"WARNING: property addresses file is missing expected column(s) {_missing_df1_cols} — "
+          f"those fields will be blank this run instead of crashing the whole pipeline.")
+    for c in _missing_df1_cols:
+        df1[c] = None
 
 merged = df1.merge(df2_small, left_on='fha_number', right_on='proj_num', how='inner')
 merged = merged.merge(portfolio, on='fha_number', how='left')
