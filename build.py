@@ -340,6 +340,18 @@ def is_missing(val):
     simple `val or default` fallback patterns."""
     return val is None or (isinstance(val, float) and math.isnan(val))
 
+def norm_id(val):
+    """Normalize an ID that might arrive as int, float (e.g. 800255390.0
+    from a JSON API), or string, so dictionary lookups can't silently
+    fail just because two sources happened to represent the same ID
+    using different Python types."""
+    if is_missing(val):
+        return None
+    s = str(val).strip()
+    if s.endswith('.0'):
+        s = s[:-2]
+    return s
+
 def sup(val):
     """Treat HUD's -4 privacy-suppression placeholder as missing."""
     if is_missing(val) or val == -4:
@@ -384,7 +396,7 @@ try:
             return None if tenant_suppressed else sup(val)
 
         hud_detail_lookup[fha8] = {
-            "_propertyId": attrs.get("PROPERTY_ID"),
+            "_propertyId": norm_id(attrs.get("PROPERTY_ID")),
             "cgType": txt(attrs.get("CLIENT_GROUP_TYPE")),
             "cgName": txt(attrs.get("CLIENT_GROUP_NAME")),
             "reacScore": sup(attrs.get("REAC_LAST_INSPECTION_SCORE")),
@@ -454,24 +466,31 @@ try:
     reac_df = pd.read_excel("reac_scores.xls", sheet_name="Sheet1")
     reac_lookup = {}
     for _, rrow in reac_df.iterrows():
-        pid = rrow.get('REMS Property Id')
+        pid = norm_id(rrow.get('REMS Property Id'))
         score = rrow.get('Inspection Score1')
         date = rrow.get('Release Date 1')
-        if pd.notna(pid) and pd.notna(score) and pd.notna(date):
+        if pid is not None and pd.notna(score) and pd.notna(date):
             reac_lookup[pid] = (str(score).strip(), pd.to_datetime(date))
+    print(f"REAC file loaded {len(reac_df)} total rows, {len(reac_lookup)} with a usable Property ID/score/date.")
 
     upgraded = 0
+    matched_by_id = 0
+    already_current = 0
     for fha8, detail in hud_detail_lookup.items():
         pid = detail.pop('_propertyId', None)
         if pid is None or pid not in reac_lookup:
             continue
+        matched_by_id += 1
         new_score, new_date = reac_lookup[pid]
         old_date = pd.to_datetime(detail.get('reacDate'), errors='coerce') if detail.get('reacDate') else None
         if old_date is None or pd.isna(old_date) or new_date > old_date:
             detail['reacScore'] = new_score
             detail['reacDate'] = new_date.strftime('%Y-%m-%d')
             upgraded += 1
-    print(f"REAC scores upgraded to a newer inspection from the authoritative file: {upgraded} properties.")
+        else:
+            already_current += 1
+    print(f"REAC cross-reference: {matched_by_id} properties matched by Property ID "
+          f"({already_current} already had an equal-or-newer ArcGIS date, {upgraded} upgraded to a newer inspection).")
 
     # Pull the "as of" date directly off the landing page (e.g. "July 1, 2026")
     try:
