@@ -125,6 +125,7 @@ df2['proj_num'] = df2['HUD PROJECT NUMBER'].astype(str).str.strip().str.zfill(8)
 # Only keep df2 columns we need for enrichment (avoid dup city/state/zip - use df1's address data as primary)
 df2_small = df2[['proj_num','UNITS','INITIAL ENDORSEMENT DATE','FINAL ENDORSEMENT DATE',
                   'ORIGINAL MORTGAGE AMOUNT','AMORITIZED PRINCIPAL BALANCE','CURRENT PRINCIPAL AND INTEREST',
+                  'INTEREST RATE','FIRST PAYMENT DATE','MATURITY DATE','TERM IN MONTHS',
                   'HOLDER NAME','HOLDER CITY','HOLDER STATE','SERVICER NAME','SERVICER CITY','SERVICER STATE',
                   'SECTION OF ACT CODE','SOA CATEGORY/SUB CATEGORY','BUSINESS_TYPE',
                   'TC','TE']].copy()
@@ -263,7 +264,8 @@ ARCGIS_FIELDS = (
     "MAXIMUM_CONTRACT_UNIT_COUNT,UNIT_MRKT_RENT_CNT,EXPIRATION_DATE1,"
     "MGMT_AGENT_ORG_NAME,MGMT_CONTACT_FULL_NAME,MGMT_CONTACT_INDV_TITLE_TEXT,"
     "MGMT_CONTACT_EMAIL_TEXT,MGMT_CONTACT_MAIN_PHN_NBR,PROPERTY_ON_SITE_PHONE_NUMBER,"
-    "HUB_NAME_TEXT,SERVICING_SITE_NAME_TEXT,PROJECT_MANAGER_NAME_TEXT"
+    "HUB_NAME_TEXT,SERVICING_SITE_NAME_TEXT,PROJECT_MANAGER_NAME_TEXT,"
+    "WAS_EVER_SUBSIDIZED_IND,WAS_EVER_ASSISTED_IND,WAS_EVER_202_811_IND,IS_SERVICE_COORDINATOR_IND"
 )
 
 def is_missing(val):
@@ -355,6 +357,10 @@ try:
             "hub": txt(attrs.get("HUB_NAME_TEXT")),
             "servSite": txt(attrs.get("SERVICING_SITE_NAME_TEXT")),
             "projMgr": txt(attrs.get("PROJECT_MANAGER_NAME_TEXT")),
+            "wasEverSubsidized": (str(attrs.get("WAS_EVER_SUBSIDIZED_IND")).strip().upper() == 'Y') if not is_missing(attrs.get("WAS_EVER_SUBSIDIZED_IND")) else None,
+            "wasEverAssisted": (str(attrs.get("WAS_EVER_ASSISTED_IND")).strip().upper() == 'Y') if not is_missing(attrs.get("WAS_EVER_ASSISTED_IND")) else None,
+            "wasEver202811": (str(attrs.get("WAS_EVER_202_811_IND")).strip().upper() == 'Y') if not is_missing(attrs.get("WAS_EVER_202_811_IND")) else None,
+            "serviceCoordinator": (str(attrs.get("IS_SERVICE_COORDINATOR_IND")).strip().upper() == 'Y') if not is_missing(attrs.get("IS_SERVICE_COORDINATOR_IND")) else None,
         }
     print(f"HUD pre-geocoded coordinates loaded for {len(hud_geocode_lookup)} FHA numbers (rooftop/ZIP+4 accuracy only).")
     print(f"HUD detail-view data loaded for {len(hud_detail_lookup)} FHA numbers.")
@@ -522,6 +528,10 @@ for _, row in merged.iterrows():
 
     details[rec['f']] = {
         "currPI": round(float(row['CURRENT PRINCIPAL AND INTEREST'])) if pd.notna(row['CURRENT PRINCIPAL AND INTEREST']) else None,
+        "rate": round(float(row['INTEREST RATE']), 3) if pd.notna(row['INTEREST RATE']) else None,
+        "firstPayment": (lambda d: pd.to_datetime(d).strftime('%Y-%m-%d') if pd.notna(d) else '')(row.get('FIRST PAYMENT DATE')),
+        "maturity": (lambda d: pd.to_datetime(d).strftime('%Y-%m-%d') if pd.notna(d) else '')(row.get('MATURITY DATE')),
+        "termMonths": int(row['TERM IN MONTHS']) if pd.notna(row.get('TERM IN MONTHS')) else None,
         "holderCity": str(row['HOLDER CITY']).strip() if pd.notna(row['HOLDER CITY']) else '',
         "holderState": str(row['HOLDER STATE']).strip() if pd.notna(row['HOLDER STATE']) else '',
         "servicer": str(row['SERVICER NAME']).strip() if pd.notna(row['SERVICER NAME']) else '',

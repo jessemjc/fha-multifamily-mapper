@@ -1756,8 +1756,12 @@ function renderDetailPanel(r, d){
   html += detailRow('Original mortgage', fmtMoney(r.m), null, 2);
   html += detailRow('Amortized balance', fmtMoney(r.bal), null, 2);
   html += detailRow('Current principal and interest', d.currPI !== null && d.currPI !== undefined ? fmtMoney(d.currPI) + ' / mo' : null, null, 2);
+  html += detailRow('Interest rate', d.rate !== null && d.rate !== undefined ? `${d.rate}%` : null, null, 2);
+  html += detailRow('Term', d.termMonths !== null && d.termMonths !== undefined ? `${d.termMonths} months` : null, null, 2);
   html += detailRow('Initial endorsed', r.e, null, 2);
   html += detailRow('Final endorsed', r.fe, null, 2);
+  html += detailRow('First payment', d.firstPayment, null, 2);
+  html += detailRow('Maturity date', d.maturity, null, 2);
   html += detailRow('Holder', r.h ? escapeHtml(r.h) + (d.holderCity ? ', ' + escapeHtml(d.holderCity) + ' ' + escapeHtml(d.holderState||'') : '') : null, null, 2);
   html += detailRow('Servicer', d.servicer ? escapeHtml(d.servicer) + (d.servicerCity ? ', ' + escapeHtml(d.servicerCity) + ' ' + escapeHtml(d.servicerState||'') : '') : null, null, 2);
   html += `</div>`;
@@ -1768,6 +1772,10 @@ function renderDetailPanel(r, d){
   html += detailRow('Section 8 contract expires', d.contractExp || null, null, 5);
   html += detailRow('Use restriction', r.restr === true ? 'Yes' : r.restr === false ? 'No' : null, null, 3);
   html += detailRow('Service agreement', d.svcAgreement === true ? 'Yes' : d.svcAgreement === false ? 'No' : null, null, 3);
+  html += detailRow('Service coordinator on staff', d.serviceCoordinator === true ? 'Yes' : d.serviceCoordinator === false ? 'No' : null, null, 5);
+  html += detailRow('Was ever subsidized', d.wasEverSubsidized === true ? 'Yes' : d.wasEverSubsidized === false ? 'No' : null, null, 5);
+  html += detailRow('Was ever assisted', d.wasEverAssisted === true ? 'Yes' : d.wasEverAssisted === false ? 'No' : null, null, 5);
+  html += detailRow('Was ever 202/811', d.wasEver202811 === true ? 'Yes' : d.wasEver202811 === false ? 'No' : null, null, 5);
   html += detailRow('Total units', r.u, null, 2);
   html += detailRow('First occupied', d.occDate, null, 3);
   html += detailRow('Tax credit (LIHTC)', r.tc ? 'Yes' : 'No', null, 2);
