@@ -159,8 +159,16 @@ f1 = "property_addresses.xlsx"
 f2 = "active_mortgages.xlsx"
 f3 = "portfolio_data.xlsx"
 
-df1 = pd.read_excel(f1, sheet_name="Sheet1")
-df2 = pd.read_excel(f2, sheet_name="sheet1", header=1)
+try:
+    df1 = pd.read_excel(f1, sheet_name="Sheet1")
+    df2 = pd.read_excel(f2, sheet_name="sheet1", header=1)
+except Exception as e:
+    raise Exception(
+        f"FATAL: could not read the core property addresses/mortgages files ({e}). "
+        f"This usually means HUD renamed a sheet or changed the file structure — "
+        f"without these two files there's nothing to build, so the run has to stop here. "
+        f"Check the actual sheet names in the downloaded .xlsx files if this recurs."
+    ) from e
 
 df1['fha_number'] = df1['fha_number'].astype(str).str.strip().str.zfill(8)
 df2['proj_num'] = df2['HUD PROJECT NUMBER'].astype(str).str.strip().str.zfill(8)
@@ -182,8 +190,17 @@ df2_small = df2[DF2_WANTED_COLS].copy()
 BT_CODE = {'MF Residential':'R', 'MF Healthcare':'H', 'MF Hospitals':'P'}
 
 # --- Third data source: Active Portfolio Property Data (subsidy/restriction flags) ---
-sheet1 = pd.read_excel(f3, sheet_name='Step_01_Property_Level_data')
-sheet2 = pd.read_excel(f3, sheet_name='All active Properties with FHA ')
+try:
+    sheet1 = pd.read_excel(f3, sheet_name='Step_01_Property_Level_data')
+    sheet2 = pd.read_excel(f3, sheet_name='All active Properties with FHA ')
+except Exception as e:
+    raise Exception(
+        f"FATAL: could not read the portfolio data file's expected sheets ({e}). "
+        f"HUD may have renamed a sheet in activeportfoliopropdata.xlsx — check the "
+        f"actual sheet names in the downloaded file if this recurs."
+    ) from e
+sheet1['property_id'] = sheet1['property_id'].astype(str).str.strip()
+sheet2['property_id'] = sheet2['property_id'].astype(str).str.strip()
 sheet2['fha_number'] = sheet2['fha_number'].astype(str).str.strip().str.zfill(8)
 portfolio = sheet1.merge(sheet2[['property_id','fha_number']], on='property_id', how='inner')
 portfolio = portfolio[portfolio['is_insured_ind'] == 'Y']
