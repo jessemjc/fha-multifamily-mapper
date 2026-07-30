@@ -89,16 +89,23 @@ FIRM_COMMITMENTS_LANDING_PAGE = "https://www.hud.gov/hud-partners/multifamily-da
 firm_commitments_path = None
 try:
     resp = fetch_with_retry(FIRM_COMMITMENTS_LANDING_PAGE, timeout=30)
+    # The link on this page may be a relative href (e.g. "/sites/default/...")
+    # rather than a full URL — match both forms and normalize afterward,
+    # rather than assume the domain prefix is always present in the raw HTML.
     m = re.search(
-        r'https://www\.hud\.gov/sites/default/files/Housing/documents/'
-        r'FHA-MF-Firm-Commitments-and-Endorsements-Database-FY\d+-FY\d+-Q\d+\.xlsx',
+        r'(https?://[^\s"\'<>]*)?(/sites/default/files/Housing/documents/'
+        r'FHA-MF-Firm-Commitments-and-Endorsements-Database-FY\d+-FY\d+-Q\d+\.xlsx)',
         resp.text
     )
     if m:
-        download(m.group(0), "firm_commitments.xlsx")
+        domain = m.group(1) or 'https://www.hud.gov'
+        full_url = domain + m.group(2)
+        download(full_url, "firm_commitments.xlsx")
         firm_commitments_path = "firm_commitments.xlsx"
     else:
         print("Could not find a Firm Commitments file link on the landing page — skipping pipeline deals this run.")
+        print(f"  (Debug: fetched {len(resp.text)} chars; searching for 'FHA-MF-Firm-Commitments' substring directly: "
+              f"{'found' if 'FHA-MF-Firm-Commitments' in resp.text else 'NOT FOUND — page content may not match expectations at all'})")
 except Exception as e:
     print(f"Could not fetch/download Firm Commitments file ({e}) — skipping pipeline deals this run.")
 
