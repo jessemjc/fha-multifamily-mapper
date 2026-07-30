@@ -23,7 +23,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install pandas openpyxl zipcodes requests
+        run: pip install pandas openpyxl xlrd zipcodes requests
 
       - name: Rebuild index.html from live HUD data
         run: python build.py
