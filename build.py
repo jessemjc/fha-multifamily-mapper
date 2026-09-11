@@ -46,6 +46,34 @@ def read_single_sheet_excel(path, header=0):
               f"(expected exactly 1) — using the first one, but this may need a closer look.")
     return pd.read_excel(xl, sheet_name=xl.sheet_names[0], header=header)
 
+def read_excel_autodetect_header(path, key_column, max_scan_rows=10, header_hint=1):
+    """Reads a single-sheet file whose header row's exact POSITION may
+    shift, not just its sheet name — HUD added a new date-stamp row
+    above the real header in the mortgages file without notice, which
+    silently shifted every column to 'Unnamed: N'. Scans the first few
+    rows for whichever one actually contains key_column, and uses that
+    row as the header — resilient to HUD inserting or removing rows
+    above the header, not just a fixed row-index guess."""
+    xl = pd.ExcelFile(path)
+    sheet = xl.sheet_names[0]
+    preview = pd.read_excel(xl, sheet_name=sheet, header=None, nrows=max_scan_rows)
+    header_row = None
+    for i in range(len(preview)):
+        row_values = [str(v).strip() for v in preview.iloc[i].values]
+        if key_column in row_values:
+            header_row = i
+            break
+    if header_row is None:
+        raise Exception(
+            f"Could not find a row containing '{key_column}' in the first {max_scan_rows} rows "
+            f"of {path} (sheet '{sheet}') — HUD may have restructured this file more than expected. "
+            f"First few rows for reference: {[list(preview.iloc[i].values)[:5] for i in range(min(5, len(preview)))]}"
+        )
+    if header_row != header_hint:
+        print(f"  NOTE: header row in {path} is now at row {header_row} (previously {header_hint}) — "
+              f"HUD added/removed a row above it. Adjusted automatically.")
+    return pd.read_excel(xl, sheet_name=sheet, header=header_row)
+
 def download(url, dest, max_retries=4):
     """Downloads with retries — HUD's servers occasionally drop the
     connection mid-transfer on larger files (seen in practice: a 17MB
@@ -174,8 +202,8 @@ f2 = "active_mortgages.xlsx"
 f3 = "portfolio_data.xlsx"
 
 try:
-    df1 = read_single_sheet_excel(f1, header=0)
-    df2 = read_single_sheet_excel(f2, header=1)
+    df1 = read_excel_autodetect_header(f1, key_column='fha_number', header_hint=0)
+    df2 = read_excel_autodetect_header(f2, key_column='HUD PROJECT NUMBER', header_hint=1)
 except Exception as e:
     raise Exception(
         f"FATAL: could not read the core property addresses/mortgages files ({e}). "
@@ -183,6 +211,23 @@ except Exception as e:
         f"without these two files there's nothing to build, so the run has to stop here. "
         f"Check the actual sheet names in the downloaded .xlsx files if this recurs."
     ) from e
+
+# The join key columns are the one thing that truly can't be worked around —
+# without them we can't link the two files at all. Check both up front, in
+# one pass, so a rename shows the FULL actual column list immediately
+# instead of crashing on whichever one happens to be touched first.
+_join_key_problems = []
+if 'fha_number' not in df1.columns:
+    _join_key_problems.append(
+        f"property_addresses.xlsx has no 'fha_number' column. Actual columns: {list(df1.columns)}")
+if 'HUD PROJECT NUMBER' not in df2.columns:
+    _join_key_problems.append(
+        f"active_mortgages.xlsx has no 'HUD PROJECT NUMBER' column. Actual columns: {list(df2.columns)}")
+if _join_key_problems:
+    raise Exception(
+        "FATAL: HUD appears to have renamed a join-key column — "
+        "without it the two core files can't be linked at all. " + " | ".join(_join_key_problems)
+    )
 
 df1['fha_number'] = df1['fha_number'].astype(str).str.strip().str.zfill(8)
 df2['proj_num'] = df2['HUD PROJECT NUMBER'].astype(str).str.strip().str.zfill(8)
@@ -196,7 +241,8 @@ DF2_WANTED_COLS = ['proj_num','UNITS','INITIAL ENDORSEMENT DATE','FINAL ENDORSEM
                     'TC','TE']
 _missing_df2_cols = [c for c in DF2_WANTED_COLS if c not in df2.columns]
 if _missing_df2_cols:
-    print(f"WARNING: mortgage file is missing expected column(s) {_missing_df2_cols} — "
+    print(f"WARNING: mortgage file is missing expected column(s) {_missing_df2_cols} "
+          f"(actual columns: {list(df2.columns)}) — "
           f"those fields will be blank this run instead of crashing the whole pipeline.")
     for c in _missing_df2_cols:
         df2[c] = None
@@ -494,7 +540,7 @@ REAC_SCORES_URL = "https://www.hud.gov/sites/default/files/Housing/documents/MF-
 reac_as_of_date = None
 try:
     download(REAC_SCORES_URL, "reac_scores.xls")
-    reac_df = read_single_sheet_excel("reac_scores.xls")
+    reac_df = read_excel_autodetect_header("reac_scores.xls", key_column='REMS Property Id', header_hint=0)
     reac_lookup = {}
     for _, rrow in reac_df.iterrows():
         pid = norm_id(rrow.get('REMS Property Id'))
