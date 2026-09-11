@@ -32,6 +32,20 @@ PROPERTY_ADDRESSES_URL = "https://www.hud.gov/sites/dfiles/Housing/documents/Ins
 ACTIVE_MORTGAGES_URL = "https://www.hud.gov/sites/default/files/Housing/documents/FHA-BF90-RM-A.xlsx"
 PORTFOLIO_DATA_URL = "https://www.hud.gov/sites/dfiles/Housing/documents/activeportfoliopropdata.xlsx"
 
+def read_single_sheet_excel(path, header=0):
+    """Reads the first sheet in a file by position rather than by name.
+    HUD has renamed a generic sheet name (e.g. 'sheet1') without notice
+    before — for files that only ever have one sheet, the position is
+    far more stable than whatever display name HUD happens to give it
+    this month. Only safe to use when a file genuinely has exactly one
+    sheet — files with multiple distinctly-named sheets (like the
+    portfolio or firm commitments files) still need name-based lookup."""
+    xl = pd.ExcelFile(path)
+    if len(xl.sheet_names) > 1:
+        print(f"  NOTE: {path} now has {len(xl.sheet_names)} sheets {xl.sheet_names} "
+              f"(expected exactly 1) — using the first one, but this may need a closer look.")
+    return pd.read_excel(xl, sheet_name=xl.sheet_names[0], header=header)
+
 def download(url, dest, max_retries=4):
     """Downloads with retries — HUD's servers occasionally drop the
     connection mid-transfer on larger files (seen in practice: a 17MB
@@ -160,8 +174,8 @@ f2 = "active_mortgages.xlsx"
 f3 = "portfolio_data.xlsx"
 
 try:
-    df1 = pd.read_excel(f1, sheet_name="Sheet1")
-    df2 = pd.read_excel(f2, sheet_name="sheet1", header=1)
+    df1 = read_single_sheet_excel(f1, header=0)
+    df2 = read_single_sheet_excel(f2, header=1)
 except Exception as e:
     raise Exception(
         f"FATAL: could not read the core property addresses/mortgages files ({e}). "
@@ -480,7 +494,7 @@ REAC_SCORES_URL = "https://www.hud.gov/sites/default/files/Housing/documents/MF-
 reac_as_of_date = None
 try:
     download(REAC_SCORES_URL, "reac_scores.xls")
-    reac_df = pd.read_excel("reac_scores.xls", sheet_name="Sheet1")
+    reac_df = read_single_sheet_excel("reac_scores.xls")
     reac_lookup = {}
     for _, rrow in reac_df.iterrows():
         pid = norm_id(rrow.get('REMS Property Id'))
