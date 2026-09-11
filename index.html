@@ -1020,9 +1020,31 @@ document.getElementById('pickSubjectBtn').addEventListener('click', () => {
 });
 
 let clusteringEnabled = false;
+function clusterColorFor(count){
+  if(count < 10) return '#7fc97f';
+  if(count < 25) return '#bede73';
+  if(count < 50) return '#fed976';
+  if(count < 100) return '#fd9a44';
+  if(count < 250) return '#f0562f';
+  return '#b0201a';
+}
 function createMarkerLayer(){
   if(clusteringEnabled && hasCluster){
-    return L.markerClusterGroup({ showCoverageOnHover:false, maxClusterRadius:50, spiderfyOnMaxZoom:true });
+    return L.markerClusterGroup({
+      showCoverageOnHover:false,
+      maxClusterRadius:50,
+      spiderfyOnMaxZoom:true,
+      iconCreateFunction: function(cluster){
+        const count = cluster.getChildCount();
+        const color = clusterColorFor(count);
+        const size = count < 10 ? 32 : count < 100 ? 38 : 46;
+        return L.divIcon({
+          html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-family:var(--sans);border:2px solid rgba(255,255,255,0.8);box-shadow:0 1px 3px rgba(0,0,0,0.4);font-size:${count<100?'12px':'11px'};">${count}</div>`,
+          className: '',
+          iconSize: L.point(size, size)
+        });
+      }
+    });
   }
   return L.layerGroup();
 }
@@ -2128,6 +2150,7 @@ if(!hasCluster){
 }
 clusterToggleEl.addEventListener('change', (e) => {
   clusteringEnabled = e.target.checked;
+  document.getElementById('separateToggle').disabled = clusteringEnabled;
   map.removeLayer(markerLayer);
   markerLayer = createMarkerLayer().addTo(map);
   if(currentResults.length) drawMarkers();
