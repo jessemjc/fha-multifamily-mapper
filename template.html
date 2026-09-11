@@ -373,6 +373,18 @@
   .ddatebadge{font-size:10px;color:var(--ink-soft);background:var(--accent-soft);padding:2px 8px;border-radius:3px;white-space:nowrap;}
   .dclose{cursor:pointer;color:var(--ink-soft);font-size:18px;background:none;border:none;padding:0;}
   .dsrc{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;font-size:9px;font-weight:600;background:var(--accent-soft);color:var(--ink-soft);border:0.5px solid var(--line);}
+  .marker-cluster-tier-0{background-color:rgba(127,201,127,0.6);}
+  .marker-cluster-tier-0 div{background-color:rgba(89,161,89,0.8);}
+  .marker-cluster-tier-1{background-color:rgba(190,222,115,0.6);}
+  .marker-cluster-tier-1 div{background-color:rgba(160,196,80,0.8);}
+  .marker-cluster-tier-2{background-color:rgba(254,217,118,0.6);}
+  .marker-cluster-tier-2 div{background-color:rgba(230,186,70,0.8);}
+  .marker-cluster-tier-3{background-color:rgba(253,154,68,0.6);}
+  .marker-cluster-tier-3 div{background-color:rgba(230,120,30,0.8);}
+  .marker-cluster-tier-4{background-color:rgba(240,86,47,0.6);}
+  .marker-cluster-tier-4 div{background-color:rgba(210,60,25,0.8);}
+  .marker-cluster-tier-5{background-color:rgba(176,32,26,0.6);}
+  .marker-cluster-tier-5 div{background-color:rgba(150,20,15,0.85);}
 </style>
 </head>
 <body>
@@ -1021,12 +1033,12 @@ document.getElementById('pickSubjectBtn').addEventListener('click', () => {
 
 let clusteringEnabled = false;
 function clusterColorFor(count){
-  if(count < 10) return '#7fc97f';
-  if(count < 25) return '#bede73';
-  if(count < 50) return '#fed976';
-  if(count < 100) return '#fd9a44';
-  if(count < 250) return '#f0562f';
-  return '#b0201a';
+  if(count < 10) return 0;
+  if(count < 25) return 1;
+  if(count < 50) return 2;
+  if(count < 100) return 3;
+  if(count < 250) return 4;
+  return 5;
 }
 function createMarkerLayer(){
   if(clusteringEnabled && hasCluster){
@@ -1036,12 +1048,11 @@ function createMarkerLayer(){
       spiderfyOnMaxZoom:true,
       iconCreateFunction: function(cluster){
         const count = cluster.getChildCount();
-        const color = clusterColorFor(count);
-        const size = count < 10 ? 32 : count < 100 ? 38 : 46;
+        const tier = clusterColorFor(count);
         return L.divIcon({
-          html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-family:var(--sans);border:2px solid rgba(255,255,255,0.8);box-shadow:0 1px 3px rgba(0,0,0,0.4);font-size:${count<100?'12px':'11px'};">${count}</div>`,
-          className: '',
-          iconSize: L.point(size, size)
+          html: `<div><span>${count}</span></div>`,
+          className: 'marker-cluster marker-cluster-tier-' + tier,
+          iconSize: L.point(40, 40)
         });
       }
     });
@@ -2150,7 +2161,15 @@ if(!hasCluster){
 }
 clusterToggleEl.addEventListener('change', (e) => {
   clusteringEnabled = e.target.checked;
-  document.getElementById('separateToggle').disabled = clusteringEnabled;
+  const sepToggle = document.getElementById('separateToggle');
+  sepToggle.disabled = clusteringEnabled;
+  if(clusteringEnabled){
+    sepToggle.checked = false;
+    separateOverlapping = false;
+  } else {
+    sepToggle.checked = true;
+    separateOverlapping = true;
+  }
   map.removeLayer(markerLayer);
   markerLayer = createMarkerLayer().addTo(map);
   if(currentResults.length) drawMarkers();
