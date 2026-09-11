@@ -498,6 +498,53 @@
 
       <div class="divider"></div>
 
+      <h2>Endorsement dates</h2>
+      <p style="font-size:11px;font-weight:600;color:var(--ink-soft);margin:0 0 4px;">Initial endorsed</p>
+      <div class="row2">
+        <div class="field">
+          <label for="ieFromMonth">From</label>
+          <select id="ieFromMonth"><option value="">Month</option></select>
+        </div>
+        <div class="field">
+          <label for="ieFromYear">&nbsp;</label>
+          <select id="ieFromYear"><option value="">Year</option></select>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="ieToMonth">To</label>
+          <select id="ieToMonth"><option value="">Month</option></select>
+        </div>
+        <div class="field">
+          <label for="ieToYear">&nbsp;</label>
+          <select id="ieToYear"><option value="">Year</option></select>
+        </div>
+      </div>
+      <p style="font-size:11px;font-weight:600;color:var(--ink-soft);margin:10px 0 4px;">Final endorsed</p>
+      <div class="row2">
+        <div class="field">
+          <label for="feFromMonth">From</label>
+          <select id="feFromMonth"><option value="">Month</option></select>
+        </div>
+        <div class="field">
+          <label for="feFromYear">&nbsp;</label>
+          <select id="feFromYear"><option value="">Year</option></select>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="feToMonth">To</label>
+          <select id="feToMonth"><option value="">Month</option></select>
+        </div>
+        <div class="field">
+          <label for="feToYear">&nbsp;</label>
+          <select id="feToYear"><option value="">Year</option></select>
+        </div>
+      </div>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Leave any of these blank to not filter on it. Firm Commitment deals shown via the toggle above always stay on the map regardless of these dates — they're not endorsed yet, so a date filter doesn't meaningfully apply to them.</p>
+
+      <div class="divider"></div>
+
       <h2>Property type</h2>
       <div class="dropdown" id="btDropdown">
         <button type="button" class="dropdown-btn" id="btDropdownBtn">
@@ -876,6 +923,7 @@ function runDrawnAreaSearch(polygonPoints, drawShape){
     if(!passesTriStateFilters(p)) return false;
     if(!passesPendingFilter(p)) return false;
     if(!passesClientGroupFilter(p, cgGroups)) return false;
+    if(!passesEndorsementDateFilter(p)) return false;
     return pointInPolygon([p.la, p.lo], polygonPoints);
   });
 
@@ -1120,6 +1168,63 @@ function passesPendingFilter(p){
   return passesAgeLimit(p); // mode === 'include'
 }
 document.getElementById('pendingAgeSelect').addEventListener('change', () => showUpdateFiltersButtonIfSearched());
+function passesEndorsementDateFilter(p){
+  // Firm Commitment deals being shown via the toggle above always stay
+  // on the map regardless of these dates — they're not endorsed yet,
+  // so a date filter doesn't meaningfully apply to them.
+  if(p.pending && getTristateValue('firmCommitment') !== 'exclude') return true;
+
+  const ieFromM = document.getElementById('ieFromMonth').value, ieFromY = document.getElementById('ieFromYear').value;
+  const ieToM = document.getElementById('ieToMonth').value, ieToY = document.getElementById('ieToYear').value;
+  const feFromM = document.getElementById('feFromMonth').value, feFromY = document.getElementById('feFromYear').value;
+  const feToM = document.getElementById('feToMonth').value, feToY = document.getElementById('feToYear').value;
+
+  const ieFrom = ieFromY ? ieFromY + '-' + (ieFromM || '01') : '';
+  const ieTo = ieToY ? ieToY + '-' + (ieToM || '12') : '';
+  const feFrom = feFromY ? feFromY + '-' + (feFromM || '01') : '';
+  const feTo = feToY ? feToY + '-' + (feToM || '12') : '';
+
+  if(ieFrom || ieTo){
+    if(!p.e) return false;
+    const ieYm = p.e.slice(0,7);
+    if(ieFrom && ieYm < ieFrom) return false;
+    if(ieTo && ieYm > ieTo) return false;
+  }
+  if(feFrom || feTo){
+    if(!p.fe) return false;
+    const feYm = p.fe.slice(0,7);
+    if(feFrom && feYm < feFrom) return false;
+    if(feTo && feYm > feTo) return false;
+  }
+  return true;
+}
+(function populateDateDropdowns(){
+  const months = [['01','Jan'],['02','Feb'],['03','Mar'],['04','Apr'],['05','May'],['06','Jun'],
+                   ['07','Jul'],['08','Aug'],['09','Sep'],['10','Oct'],['11','Nov'],['12','Dec']];
+  const currentYear = new Date().getFullYear();
+  const minYear = 1985;
+  const monthIds = ['ieFromMonth','ieToMonth','feFromMonth','feToMonth'];
+  const yearIds = ['ieFromYear','ieToYear','feFromYear','feToYear'];
+  monthIds.forEach(id => {
+    const sel = document.getElementById(id);
+    months.forEach(([val, label]) => {
+      const opt = document.createElement('option');
+      opt.value = val; opt.textContent = label;
+      sel.appendChild(opt);
+    });
+  });
+  yearIds.forEach(id => {
+    const sel = document.getElementById(id);
+    for(let y = currentYear; y >= minYear; y--){
+      const opt = document.createElement('option');
+      opt.value = String(y); opt.textContent = String(y);
+      sel.appendChild(opt);
+    }
+  });
+  [...monthIds, ...yearIds].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => showUpdateFiltersButtonIfSearched());
+  });
+})();
 document.querySelectorAll('.tristate').forEach(group => {
   group.querySelectorAll('.tristate-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2354,6 +2459,7 @@ async function runRadiusSearchFromPoint(point, label){
       .filter(p => passesTriStateFilters(p))
       .filter(p => passesPendingFilter(p))
       .filter(p => passesClientGroupFilter(p, cgGroups))
+      .filter(p => passesEndorsementDateFilter(p))
       .map(p => applyOverride({...p, _dist: haversineMiles(point.lat, point.lon, p.la, p.lo)}))
       .filter(p => p._dist <= radius + buffer)
       .sort((a,b) => a._dist - b._dist);
@@ -2633,6 +2739,7 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
     if(!passesTriStateFilters(p)) return false;
     if(!passesClientGroupFilter(p, cgGroups)) return false;
     if(!passesPendingFilter(p)) return false;
+    if(!passesEndorsementDateFilter(p)) return false;
     if(state && p.s !== state) return false;
     if(city && !p.c.toLowerCase().includes(city)) return false;
     if(zip && p.z !== zip.padStart(5,'0')) return false;
