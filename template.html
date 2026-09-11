@@ -6,6 +6,9 @@
 <title>FHA Multifamily Property Finder</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <style>
   :root{
     --ink:#1b2430;
@@ -440,6 +443,7 @@
         </div>
       </div>
       <button id="filterBtn" class="secondaryBtn">Search</button>
+      <button id="wholeUsaBtn" type="button" class="secondaryBtn" style="margin-top:6px;">Show entire USA</button>
       </div>
 
       <div class="searchSection">
@@ -471,6 +475,11 @@
           <input type="checkbox" id="separateToggle" checked style="width:auto;"> Separate overlapping pins
         </label>
       </div>
+      <div class="field" style="margin-bottom:4px;">
+        <label style="display:flex;align-items:center;gap:7px;font-weight:500;cursor:pointer;">
+          <input type="checkbox" id="clusterToggle" style="width:auto;"> Cluster pins
+        </label>
+      </div>
 
       <div class="divider"></div>
 
@@ -499,49 +508,23 @@
       <div class="divider"></div>
 
       <h2>Endorsement dates</h2>
-      <p style="font-size:11px;font-weight:600;color:var(--ink-soft);margin:0 0 4px;">Initial endorsed</p>
-      <div class="row2">
-        <div class="field">
-          <label for="ieFromMonth">From</label>
-          <select id="ieFromMonth"><option value="">Month</option></select>
-        </div>
-        <div class="field">
-          <label for="ieFromYear">&nbsp;</label>
-          <select id="ieFromYear"><option value="">Year</option></select>
-        </div>
+      <p style="font-size:11px;font-weight:600;color:var(--ink-soft);margin:0 0 3px;">Initial endorsed</p>
+      <div style="display:flex;gap:4px;align-items:center;margin-bottom:8px;">
+        <select id="ieFromMonth" style="flex:1;min-width:0;padding:5px 2px;font-size:11px;"><option value="">Mo</option></select>
+        <select id="ieFromYear" style="flex:1.3;min-width:0;padding:5px 2px;font-size:11px;"><option value="">Yr</option></select>
+        <span style="font-size:10px;color:var(--ink-soft);">–</span>
+        <select id="ieToMonth" style="flex:1;min-width:0;padding:5px 2px;font-size:11px;"><option value="">Mo</option></select>
+        <select id="ieToYear" style="flex:1.3;min-width:0;padding:5px 2px;font-size:11px;"><option value="">Yr</option></select>
       </div>
-      <div class="row2">
-        <div class="field">
-          <label for="ieToMonth">To</label>
-          <select id="ieToMonth"><option value="">Month</option></select>
-        </div>
-        <div class="field">
-          <label for="ieToYear">&nbsp;</label>
-          <select id="ieToYear"><option value="">Year</option></select>
-        </div>
+      <p style="font-size:11px;font-weight:600;color:var(--ink-soft);margin:0 0 3px;">Final endorsed</p>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <select id="feFromMonth" style="flex:1;min-width:0;padding:5px 2px;font-size:11px;"><option value="">Mo</option></select>
+        <select id="feFromYear" style="flex:1.3;min-width:0;padding:5px 2px;font-size:11px;"><option value="">Yr</option></select>
+        <span style="font-size:10px;color:var(--ink-soft);">–</span>
+        <select id="feToMonth" style="flex:1;min-width:0;padding:5px 2px;font-size:11px;"><option value="">Mo</option></select>
+        <select id="feToYear" style="flex:1.3;min-width:0;padding:5px 2px;font-size:11px;"><option value="">Yr</option></select>
       </div>
-      <p style="font-size:11px;font-weight:600;color:var(--ink-soft);margin:10px 0 4px;">Final endorsed</p>
-      <div class="row2">
-        <div class="field">
-          <label for="feFromMonth">From</label>
-          <select id="feFromMonth"><option value="">Month</option></select>
-        </div>
-        <div class="field">
-          <label for="feFromYear">&nbsp;</label>
-          <select id="feFromYear"><option value="">Year</option></select>
-        </div>
-      </div>
-      <div class="row2">
-        <div class="field">
-          <label for="feToMonth">To</label>
-          <select id="feToMonth"><option value="">Month</option></select>
-        </div>
-        <div class="field">
-          <label for="feToYear">&nbsp;</label>
-          <select id="feToYear"><option value="">Year</option></select>
-        </div>
-      </div>
-      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Leave any of these blank to not filter on it. Firm Commitment deals shown via the toggle above always stay on the map regardless of these dates — they're not endorsed yet, so a date filter doesn't meaningfully apply to them.</p>
+      <p style="font-size:10.5px;color:var(--ink-soft);margin-top:4px;">Leave blank to not filter. Firm Commitment deals shown via the toggle above always stay on the map regardless of these dates.</p>
 
       <div class="divider"></div>
 
@@ -791,6 +774,17 @@ async function ensureLeaflet(){
   }
   return typeof L !== 'undefined';
 }
+async function ensureMarkerCluster(){
+  if(typeof L !== 'undefined' && L.markerClusterGroup) return true;
+  const fallbacks = [
+    'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js',
+    'https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js'
+  ];
+  for(const url of fallbacks){
+    try{ await loadScriptTag(url); if(L.markerClusterGroup) return true; } catch(e){ /* try next */ }
+  }
+  return !!(typeof L !== 'undefined' && L.markerClusterGroup);
+}
 
 (async function initApp(){
   const ok = await ensureLeaflet();
@@ -810,6 +804,7 @@ async function ensureLeaflet(){
       'The map library could not load — see the message above the map for why.</div>';
     return;
   }
+  const hasCluster = await ensureMarkerCluster(); // optional enhancement — non-fatal if unavailable
 
 /* ============================================================
    MAP
@@ -1024,7 +1019,14 @@ document.getElementById('pickSubjectBtn').addEventListener('click', () => {
   setStatus('Click anywhere on the map to set the subject property location.');
 });
 
-let markerLayer = L.layerGroup().addTo(map);
+let clusteringEnabled = false;
+function createMarkerLayer(){
+  if(clusteringEnabled && hasCluster){
+    return L.markerClusterGroup({ showCoverageOnHover:false, maxClusterRadius:50, spiderfyOnMaxZoom:true });
+  }
+  return L.layerGroup();
+}
+let markerLayer = createMarkerLayer().addTo(map);
 let starLayer = L.layerGroup().addTo(map);
 let radiusLayer = L.layerGroup().addTo(map);
 let boundaryLayer = L.layerGroup().addTo(map);
@@ -2119,6 +2121,17 @@ document.getElementById('separateToggle').addEventListener('change', (e) => {
   separateOverlapping = e.target.checked;
   if(currentResults.length) drawMarkers();
 });
+const clusterToggleEl = document.getElementById('clusterToggle');
+if(!hasCluster){
+  clusterToggleEl.disabled = true;
+  clusterToggleEl.closest('.field').title = 'Clustering library failed to load — try reloading the page.';
+}
+clusterToggleEl.addEventListener('change', (e) => {
+  clusteringEnabled = e.target.checked;
+  map.removeLayer(markerLayer);
+  markerLayer = createMarkerLayer().addTo(map);
+  if(currentResults.length) drawMarkers();
+});
 
 function shortCounty(name){
   if(!name) return name;
@@ -2705,12 +2718,12 @@ document.querySelectorAll('.viewTabBtn').forEach(btn => {
 /* ============================================================
    DIRECT FILTERS (state / city / zip) — no geocoding until requested
    ============================================================ */
-document.getElementById('filterBtn').addEventListener('click', async () => {
-  const state = stateSel.value;
-  const cityRaw = document.getElementById('cityFilter').value.trim();
+async function runStateCityZipSearch(wholeUsa){
+  const state = wholeUsa ? '' : stateSel.value;
+  const cityRaw = wholeUsa ? '' : document.getElementById('cityFilter').value.trim();
   const city = cityRaw.toLowerCase();
-  const zip = document.getElementById('zipFilter').value.trim();
-  const countyRaw = document.getElementById('countyFilter').value.trim();
+  const zip = wholeUsa ? '' : document.getElementById('zipFilter').value.trim();
+  const countyRaw = wholeUsa ? '' : document.getElementById('countyFilter').value.trim();
   const county = countyRaw.toLowerCase();
   const types = activeBusinessTypes();
   const finGroups = activeFinancingGroups();
@@ -2728,8 +2741,8 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
     setStatus('Check at least one client group.', true);
     return;
   }
-  if(!state && !city && !zip && !county){
-    setStatus('Choose at least one filter (state, city, zip, or county).', true);
+  if(!wholeUsa && !state && !city && !zip && !county){
+    setStatus('Choose at least one filter (state, city, zip, or county), or use "Show entire USA".', true);
     return;
   }
 
@@ -2753,12 +2766,17 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
   radiusLayer.clearLayers();
   clearDrawnArea();
 
-  const parts = [];
-  if(city) parts.push(`city contains "${city}"`);
-  if(county) parts.push(`county contains "${county}"`);
-  if(state) parts.push(`state = ${state}`);
-  if(zip) parts.push(`zip = ${zip}`);
-  const filterTitle = `${results.length.toLocaleString()} properties — ${parts.join(', ')}`;
+  let filterTitle;
+  if(wholeUsa){
+    filterTitle = `${results.length.toLocaleString()} properties — entire USA`;
+  } else {
+    const parts = [];
+    if(city) parts.push(`city contains "${city}"`);
+    if(county) parts.push(`county contains "${county}"`);
+    if(state) parts.push(`state = ${state}`);
+    if(zip) parts.push(`zip = ${zip}`);
+    filterTitle = `${results.length.toLocaleString()} properties — ${parts.join(', ')}`;
+  }
   renderAll(filterTitle);
   lastSearchResults = currentResults; lastSearchContext = searchContext; lastSearchTitle = filterTitle;
   updateMyListUI();
@@ -2769,17 +2787,21 @@ document.getElementById('filterBtn').addEventListener('click', async () => {
     setStatus(`Found ${results.length.toLocaleString()} properties (zip-level pins shown). Click "Locate street addresses" for exact pins.`);
   }
 
-  // Outline the most specific thing searched for: zip > county (+state) > city (+state) > state alone.
-  const zip5 = zip ? zip.padStart(5,'0') : '';
-  let drew = false;
-  if(zip5) drew = await drawBoundary('zip', zip5);
-  else if(countyRaw) drew = await drawBoundary('county', countyRaw, state || undefined);
-  else if(cityRaw) drew = await drawBoundary('city', cityRaw, state || undefined);
-  else if(state) drew = await drawBoundary('state', state);
-  if((zip5 || countyRaw || cityRaw || state) && !drew){
-    setStatus(document.getElementById('status').textContent + ' (Could not draw a boundary outline for that area — Census boundary service may be unavailable.)');
+  if(!wholeUsa){
+    // Outline the most specific thing searched for: zip > county (+state) > city (+state) > state alone.
+    const zip5 = zip ? zip.padStart(5,'0') : '';
+    let drew = false;
+    if(zip5) drew = await drawBoundary('zip', zip5);
+    else if(countyRaw) drew = await drawBoundary('county', countyRaw, state || undefined);
+    else if(cityRaw) drew = await drawBoundary('city', cityRaw, state || undefined);
+    else if(state) drew = await drawBoundary('state', state);
+    if((zip5 || countyRaw || cityRaw || state) && !drew){
+      setStatus(document.getElementById('status').textContent + ' (Could not draw a boundary outline for that area — Census boundary service may be unavailable.)');
+    }
   }
-});
+}
+document.getElementById('filterBtn').addEventListener('click', () => runStateCityZipSearch(false));
+document.getElementById('wholeUsaBtn').addEventListener('click', () => runStateCityZipSearch(true));
 
 })(); // end initApp
 </script>
